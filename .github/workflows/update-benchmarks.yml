@@ -1,0 +1,48 @@
+# Copyright 2026 <VOTRE NOM / ORGANISATION>
+# SPDX-License-Identifier: Apache-2.0
+
+name: Update Benchmarks (F5 / RWS)
+
+on:
+  schedule:
+    - cron: "0 4 */14 * *"   # tous les 14 jours à 4h UTC
+  workflow_dispatch:          # manuel possible
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Installer dépendances de scraping
+        run: pip install requests beautifulsoup4
+
+      - name: Rafraîchir F5
+        continue-on-error: true
+        run: python scripts/refresh_f5.py
+
+      - name: Rafraîchir RWS
+        continue-on-error: true
+        run: python scripts/refresh_rws.py
+
+      - name: Commit si changements
+        run: |
+          git config user.name "llm-gateway-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add benchmarks_cache/f5_safety.json benchmarks_cache/rws_translation.json || true
+          if git diff --cached --quiet; then
+            echo "Aucun changement, skip commit."
+          else
+            git commit -m "chore: auto-update F5/RWS benchmarks ($(date +%Y-%m-%d))"
+            git push
+          fi

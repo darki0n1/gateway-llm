@@ -1,0 +1,26 @@
+# Copyright 2026 <VOTRE NOM / ORGANISATION>
+# SPDX-License-Identifier: Apache-2.0
+#
+# Politique de résidence des données. Filtrée AVANT toute cascade :
+# si un provider n'est pas autorisé pour la sensibilité de la tâche,
+# il est skippé même s'il est en tête de chaîne.
+
+residency:
+  public:
+    allowed_providers:
+      - groq
+      - openrouter
+      - mistral
+      - nvidia
+      - google_ai
+      - cloudflare
+      - ollama
+
+  internal:              # données internes : EU ou local uniquement
+    allowed_providers:
+      - mistral          # FR / EU
+      - ollama           # local
+
+  confidential:          # données confidentielles : local strict
+    allowed_providers:
+      - ollama

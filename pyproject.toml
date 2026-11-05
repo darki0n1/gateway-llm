@@ -1,0 +1,122 @@
+# Copyright 2026 Amandine Dennieau
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "llm-gateway"
+version = "0.1.0"
+description = "Quality-Gated Batch Router : routage LLM par cascade avec guardrails, budget et politique de résidence."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{ name = "<VOTRE NOM>", email = "<vous@example.com>" }]
+keywords = ["llm", "router", "batch", "guardrails", "fallback", "cost", "souverainete"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Typing :: Typed",
+]
+dependencies = [
+    "requests>=2.32",
+    "pydantic>=2.0",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+guardrails = ["nemoguardrails>=0.11"]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "ruff>=0.6",
+    "bandit>=1.7",
+    "pip-audit>=2.7",
+    "mypy>=1.10",
+]
+
+[project.scripts]
+llm-gateway = "llm_gateway.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/<vous>/llm-gateway"
+Repository = "https://github.com/<vous>/llm-gateway"
+Issues = "https://github.com/<vous>/llm-gateway/issues"
+Changelog = "https://github.com/<vous>/llm-gateway/blob/main/CHANGELOG.md"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/llm_gateway"]
+
+# ────────────────────────────────────────────────────────────────
+# Ruff — lint + format
+# ────────────────────────────────────────────────────────────────
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "S", "SIM", "RUF"]
+ignore = ["S101"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S105", "S106"]
+
+# ────────────────────────────────────────────────────────────────
+# Bandit — analyse statique de sécurité
+# ────────────────────────────────────────────────────────────────
+[tool.bandit]
+exclude_dirs = ["tests", ".venv", "build", "dist"]
+skips = ["B101"]
+
+# ────────────────────────────────────────────────────────────────
+# Pytest
+# ────────────────────────────────────────────────────────────────
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = "-ra -q --strict-markers"
+testpaths = ["tests"]
+
+# ────────────────────────────────────────────────────────────────
+# Coverage
+# ────────────────────────────────────────────────────────────────
+[tool.coverage.run]
+source = ["src/llm_gateway"]
+branch = true
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]
+
+# ────────────────────────────────────────────────────────────────
+# Mypy
+# ────────────────────────────────────────────────────────────────
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_unused_ignores = true
+warn_return_any = true
+warn_redundant_casts = true

@@ -1,0 +1,6 @@
+{
+  "last_updated": "2026-01-01",
+  "source": "F5 Labs CASI / ARS leaderboards",
+  "notes": "Remplir manuellement depuis https://www.f5.com/labs/casi et https://www.f5.com/labs/ars. Scores sur 0-100, plus haut = mieux.",
+  "models": []
+}

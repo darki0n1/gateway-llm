@@ -1,0 +1,6 @@
+{
+  "last_updated": "2026-01-01",
+  "source": "RWS TrainAI LLM Leaderboard (M-GATE)",
+  "notes": "Remplir manuellement depuis https://www.rws.com/artificial-intelligence/train-ai-data-services/llm-leaderboard/. Scores sur 0-5, normalisés x20 en interne.",
+  "models": []
+}

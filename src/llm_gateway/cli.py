@@ -1,0 +1,480 @@
+# Copyright 2026 <VOTRE NOM / ORGANISATION>
+# SPDX-License-Identifier: Apache-2.0
+
+"""Point d'entrée CLI de llm-gateway."""
+
+from __future__ import annotations
+
+import argparse
+import logging
+import pathlib
+import sys
+
+from llm_gateway import __version__
+from llm_gateway.benchmarks.aggregator import BenchmarkAggregator
+from llm_gateway.benchmarks.base import TaskCategory
+from llm_gateway.benchmarks.benchlm import BenchLMAdapter
+from llm_gateway.benchmarks.f5_safety import F5SafetyAdapter
+from llm_gateway.benchmarks.rankllms import RankLLMsAdapter
+from llm_gateway.benchmarks.rws_translation import RWSTranslationAdapter
+from llm_gateway.classifier import TaskClassifier
+from llm_gateway.config import load_config, load_policy
+from llm_gateway.doctor import Doctor
+from llm_gateway.hardware import detect_vram
+from llm_gateway.installer import Installer
+from llm_gateway.logging import configure as configure_logging
+
+log = logging.getLogger("llm_gateway.cli")
+
+
+# ─── Helpers ────────────────────────────────────────────────────
+def _build_aggregator(force: bool) -> BenchmarkAggregator:
+    sources = [
+        BenchLMAdapter(),
+        RankLLMsAdapter(),
+        F5SafetyAdapter(),
+        RWSTranslationAdapter(),
+    ]
+    return BenchmarkAggregator(sources, force_refresh=force)
+
+
+def _get_required_ollama_models(config_path: str | None) -> list[str]:
+    """Lit models.yaml et extrait les noms réels des modèles Ollama."""
+    if not config_path:
+        return []
+    try:
+        cfg = load_config(config_path)
+    except Exception as e:
+        log.debug("Impossible de lire %s : %s", config_path, e)
+        return []
+    result = []
+    for key, model_cfg in cfg.models.items():
+        provider = cfg.providers[model_cfg.provider]
+        if provider.type == "ollama":
+            result.append(model_cfg.model_name or key)
+    return result
+
+
+def _run_preflight(
+    config_path: str,
+    auto_install: bool,
+    assume_yes: bool,
+) -> bool:
+    """Retourne True si on peut continuer, False si erreur critique."""
+    required_models = _get_required_ollama_models(config_path)
+    doctor = Doctor(required_models=required_models)
+    print("\n🔍 Pre-flight check :")
+    report = doctor.run()
+    report.print_report()
+
+    if report.has_errors:
+        print("\n❌ Erreurs critiques. Corriger avant de continuer.")
+        return False
+
+    if report.missing_models and auto_install:
+        print()
+        installer = Installer(interactive=not assume_yes, assume_yes=assume_yes)
+        n = installer.ensure_models(report.missing_models)
+        if n:
+            print(f"✅ {n} modèle(s) installé(s)")
+        else:
+            print("⚠️  Aucun modèle installé (cloud-only ou modèles absents).")
+
+    return True
+
+
+# ─── Commandes ──────────────────────────────────────────────────
+def cmd_doctor(args: argparse.Namespace) -> int:
+    configure_logging(level="INFO")
+    required = _get_required_ollama_models(args.config)
+    doctor = Doctor(required_models=required)
+    print("\n=== DIAGNOSTIC ===")
+    report = doctor.run()
+    report.print_report()
+    print()
+    if report.has_errors:
+        print("Statut : ERREURS CRITIQUES")
+        return 1
+    if report.has_warnings:
+        print("Statut : AVERTISSEMENTS (le système peut fonctionner partiellement)")
+        return 0
+    print("Statut : TOUT EST OK")
+    return 0
+
+
+def cmd_setup(args: argparse.Namespace) -> int:
+    configure_logging(level="INFO")
+    required = _get_required_ollama_models(args.config)
+    if not required:
+        print("ℹ️  Aucun modèle Ollama déclaré dans la config. Rien à installer.")
+        return 0
+
+    doctor = Doctor(required_models=required)
+    print("\n=== SETUP ===")
+    report = doctor.run()
+    report.print_report()
+
+    if report.has_errors:
+        print("\n❌ Erreurs critiques, arrêt.")
+        return 1
+    if not report.missing_models:
+        print("\n✅ Tous les modèles sont déjà installés.")
+        return 0
+
+    print()
+    installer = Installer(interactive=not args.yes, assume_yes=args.yes)
+    n = installer.ensure_models(report.missing_models)
+    print(f"\n✅ {n} modèle(s) installé(s) sur {len(report.missing_models)}.")
+    return 0
+
+
+def cmd_benchmarks_refresh(args: argparse.Namespace) -> int:
+    configure_logging(level="INFO")
+    agg = _build_aggregator(force=True)
+    for cat in TaskCategory:
+        scores = agg.get_scores(cat)
+        log.info("%s: %d modèles scorés", cat.value, len(scores))
+    print("✅ Cache benchmarks mis à jour.")
+    return 0
+
+
+def cmd_intake(args: argparse.Namespace) -> int:
+    from llm_gateway import intake as m
+
+    if args.intake_cmd == "from-folder":
+        n = m.intake_from_folder(
+            pathlib.Path(args.path), pathlib.Path(args.output),
+            prompt_template=args.prompt, domain=args.domain,
+            sensitivity=args.sensitivity,
+        )
+    elif args.intake_cmd == "from-text":
+        n = m.intake_from_text(
+            pathlib.Path(args.path), pathlib.Path(args.output),
+            prompt_template=args.prompt, domain=args.domain,
+            sensitivity=args.sensitivity,
+        )
+    elif args.intake_cmd == "from-csv":
+        n = m.intake_from_csv(
+            pathlib.Path(args.path), pathlib.Path(args.output),
+            column=args.column, id_column=args.id_column,
+            prompt_template=args.prompt,
+            sensitivity=args.sensitivity,
+        )
+    else:
+        n = m.intake_from_urls(
+            pathlib.Path(args.path), pathlib.Path(args.output),
+            prompt_template=args.prompt,
+            sensitivity=args.sensitivity,
+            respect_robots=not args.no_robots,
+        )
+    print(f"✅ {n} tâches écrites dans {args.output}")
+    return 0
+
+
+def cmd_batch_run(args: argparse.Namespace) -> int:
+    configure_logging(level="DEBUG" if args.verbose else "INFO")
+
+    # Pre-flight (sauf dry-run ou --no-doctor)
+    if not args.dry_run and not args.no_doctor:
+        ok = _run_preflight(
+            config_path=args.config,
+            auto_install=not args.no_install,
+            assume_yes=args.yes,
+        )
+        if not ok:
+            return 1
+
+    cfg = load_config(args.config)
+    policy = load_policy(args.policy) if args.policy else None
+
+    hw = detect_vram()
+    log.info("VRAM détectée: %s Go (%s)", hw.vram_gb, hw.source)
+
+    agg = None
+    if args.refresh_benchmarks or args.rank_by_benchmarks:
+        agg = _build_aggregator(force=args.refresh_benchmarks)
+
+    classifier: TaskClassifier | None = None
+
+    from llm_gateway.batch import BatchRunner
+    runner = BatchRunner(
+        config=cfg,
+        policy=policy,
+        benchmarks=agg,
+        hardware=hw,
+        input_path=pathlib.Path(args.input),
+        output_path=pathlib.Path(args.output),
+        resume=args.resume,
+        dry_run=args.dry_run,
+        classifier=classifier,
+        classifier_model=args.classifier_model,
+        disable_classifier=args.no_classifier,
+        max_cost_eur=args.max_cost_eur,
+    )
+    runner.run()
+    return 0
+
+
+# ─── Main ───────────────────────────────────────────────────────
+_MAIN_EPILOG = """\
+Commandes disponibles :
+  doctor       Diagnostic de l'environnement (deps, Ollama, modèles)
+  setup        Installation guidée (télécharge les modèles manquants)
+  intake       Convertir des données hétérogènes en JSONL de tâches
+  benchmarks   Gérer le cache des benchmarks
+  batch        Traiter un lot de tâches
+
+Exemples rapides :
+  llm-gateway doctor
+      Vérifie que tout est en place.
+
+  llm-gateway setup --config config/models.yaml
+      Télécharge les modèles Ollama manquants.
+
+  llm-gateway intake from-folder --path ./screenshots --output tasks.jsonl
+      Convertit un dossier d'images en fichier de tâches.
+
+  llm-gateway batch run --input tasks.jsonl --output results.jsonl \\
+      --config config/models.yaml
+      Lance le traitement.
+
+  llm-gateway batch run ... --dry-run
+      Estime le coût sans appeler les modèles.
+
+  llm-gateway batch run ... --resume
+      Reprend après une interruption.
+
+Pour l'aide détaillée d'une commande : llm-gateway <commande> --help
+Documentation : https://github.com/<vous>/llm-gateway
+"""
+
+
+def _epilog_for(cmd: str) -> str:
+    return {
+        "doctor": """\
+Exemples :
+  llm-gateway doctor
+  llm-gateway doctor --config config/models.yaml
+
+Sortie :
+  ✓ / ⚠ / ✗ par item (deps Python, binaire Ollama, daemon, modèles).
+  Code retour 1 si erreurs critiques, 0 sinon.
+""",
+        "setup": """\
+Exemples :
+  llm-gateway setup --config config/models.yaml
+      Interactif : demande confirmation avant chaque pull.
+
+  llm-gateway setup --config config/models.yaml --yes
+      Non-interactif : installe tout ce qui manque.
+
+Le fichier config doit déclarer au moins un provider de type 'ollama'.
+""",
+        "intake": """\
+Sous-commandes :
+  from-folder    Une tâche par image dans un dossier (récursif)
+  from-text      Une tâche par fichier texte (.txt, .md, .html, .eml)
+  from-csv       Une tâche par ligne d'un CSV
+  from-urls      Une tâche par URL (respecte robots.txt par défaut)
+
+Exemples :
+  llm-gateway intake from-folder --path ./screenshots --output tasks.jsonl
+  llm-gateway intake from-text --path ./emails --output tasks.jsonl
+  llm-gateway intake from-csv --path ./tickets.csv --column description --output tasks.jsonl
+  llm-gateway intake from-urls --path ./urls.txt --output tasks.jsonl
+
+Aucune édition manuelle de JSONL n'est nécessaire.
+""",
+        "benchmarks": """\
+Sous-commandes :
+  refresh    Force le rafraîchissement du cache BenchLM + RankLLMs
+
+Le cache local a un TTL de 24h. `batch run --refresh-benchmarks` force
+aussi un refresh au démarrage.
+""",
+        "batch": """\
+Sous-commandes :
+  run        Lance un batch JSONL
+
+Options principales de `batch run` :
+  --input PATH               Fichier d'entrée JSONL (une tâche par ligne)
+  --output PATH              Fichier de sortie JSONL
+  --config PATH              Config des providers/modèles (YAML)
+  --policy PATH              Politique de résidence (YAML, optionnel)
+  --resume                   Reprend un batch interrompu
+  --dry-run                  Estime sans appeler les modèles
+  --refresh-benchmarks       Rafraîchit les scores avant de router
+  --rank-by-benchmarks       Réordonne les chaînes par benchmarks
+  --max-cost-eur X           Budget maximal en euros (arrêt contrôlé)
+  --no-classifier            Désactive la classification automatique
+  --classifier-model NAME    Modèle Ollama pour classifier (défaut: qwen3:4b-instruct)
+  --no-doctor                Skip le pre-flight (utile en CI)
+  --no-install               Pre-flight sans installation auto
+  --yes, -y                  Auto-confirme toutes les installations
+  --verbose, -v              Logs DEBUG
+
+Exemples :
+  llm-gateway batch run --input t.jsonl --output r.jsonl --config config/models.yaml
+  llm-gateway batch run --input t.jsonl --output r.jsonl --config config/models.yaml --dry-run
+  llm-gateway batch run --input t.jsonl --output r.jsonl --config config/models.yaml --resume --max-cost-eur 5.0
+""",
+    }.get(cmd, "")
+
+
+def _make_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(
+        prog="llm-gateway",
+        description=(
+            "Quality-Gated Batch Router — routage LLM par cascade, "
+            "guardrails, budget et résidence des données."
+        ),
+        epilog=_MAIN_EPILOG,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p.add_argument(
+        "--version", action="version", version=f"%(prog)s {__version__}",
+    )
+    sub = p.add_subparsers(dest="cmd", required=True, metavar="<command>")
+
+    # ─── doctor ────────────────────────────────────────────────
+    d = sub.add_parser(
+        "doctor",
+        help="Vérifier l'environnement (deps, Ollama, modèles)",
+        description=(
+            "Vérifie les dépendances Python, la présence d'Ollama, "
+            "son daemon, et les modèles locaux déclarés dans la config."
+        ),
+        epilog=_epilog_for("doctor"),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    d.add_argument("--config", default=None,
+                   help="Config YAML pour découvrir les modèles requis")
+    d.set_defaults(func=cmd_doctor)
+
+    # ─── setup ─────────────────────────────────────────────────
+    s = sub.add_parser(
+        "setup",
+        help="Installation guidée (télécharge les modèles manquants)",
+        description=(
+            "Diagnostique l'environnement puis télécharge les modèles "
+            "Ollama manquants déclarés dans la config."
+        ),
+        epilog=_epilog_for("setup"),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    s.add_argument("--config", required=True,
+                   help="Config YAML des providers/modèles")
+    s.add_argument("--yes", "-y", action="store_true",
+                   help="Auto-confirme chaque installation")
+    s.set_defaults(func=cmd_setup)
+
+    # ─── intake ────────────────────────────────────────────────
+    i = sub.add_parser(
+        "intake",
+        help="Convertir des données en JSONL de tâches",
+        description="Convertisseur de données hétérogènes en JSONL de tâches.",
+        epilog=_epilog_for("intake"),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    i_sub = i.add_subparsers(dest="intake_cmd", required=True, metavar="<source>")
+
+    f = i_sub.add_parser("from-folder",
+                         help="Dossier d'images (récursif)")
+    f.add_argument("--path", required=True)
+    f.add_argument("--output", required=True)
+    f.add_argument("--prompt", default="Analyse cette image et décris ce que tu vois.")
+    f.add_argument("--domain", default="multimodal_extraction")
+    f.add_argument("--sensitivity", default="public")
+
+    t = i_sub.add_parser("from-text", help="Dossier de fichiers texte")
+    t.add_argument("--path", required=True)
+    t.add_argument("--output", required=True)
+    t.add_argument("--prompt", default="Traite le contenu suivant :\n\n{content}")
+    t.add_argument("--domain", default=None)
+    t.add_argument("--sensitivity", default="public")
+
+    c = i_sub.add_parser("from-csv", help="Fichier CSV")
+    c.add_argument("--path", required=True)
+    c.add_argument("--output", required=True)
+    c.add_argument("--column", required=True,
+                   help="Nom de la colonne contenant le texte")
+    c.add_argument("--id-column", default=None,
+                   help="Nom de la colonne d'ID (optionnel)")
+    c.add_argument("--prompt", default="{content}")
+    c.add_argument("--sensitivity", default="public")
+
+    u = i_sub.add_parser("from-urls", help="Liste d'URLs")
+    u.add_argument("--path", required=True,
+                   help="Fichier .txt avec une URL par ligne")
+    u.add_argument("--output", required=True)
+    u.add_argument("--prompt", default="Résume la page suivante :\n\n{content}")
+    u.add_argument("--sensitivity", default="public")
+    u.add_argument("--no-robots", action="store_true",
+                   help="Ne pas vérifier robots.txt (à vos risques)")
+
+    i.set_defaults(func=cmd_intake)
+
+    # ─── benchmarks ────────────────────────────────────────────
+    b = sub.add_parser(
+        "benchmarks",
+        help="Gérer le cache des benchmarks",
+        description="Gère le cache local des scores de benchmarks.",
+        epilog=_epilog_for("benchmarks"),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    b_sub = b.add_subparsers(dest="bench_cmd", required=True, metavar="<action>")
+    br = b_sub.add_parser("refresh", help="Forcer le rafraîchissement")
+    br.set_defaults(func=cmd_benchmarks_refresh)
+
+    # ─── batch ─────────────────────────────────────────────────
+    ba = sub.add_parser(
+        "batch",
+        help="Traiter un lot de tâches",
+        description="Orchestrateur de traitement par lot (JSONL → JSONL).",
+        epilog=_epilog_for("batch"),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    ba_sub = ba.add_subparsers(dest="batch_cmd", required=True, metavar="<action>")
+    run = ba_sub.add_parser(
+        "run",
+        help="Lancer un batch JSONL",
+        description="Lance un batch de traitement avec pre-flight automatique.",
+    )
+    run.add_argument("--input", required=True, help="Fichier d'entrée JSONL")
+    run.add_argument("--output", required=True, help="Fichier de sortie JSONL")
+    run.add_argument("--config", required=True, help="Config YAML")
+    run.add_argument("--policy", default=None, help="Politique de résidence (YAML)")
+    run.add_argument("--resume", action="store_true",
+                     help="Reprendre un batch interrompu")
+    run.add_argument("--dry-run", action="store_true",
+                     help="Estimer sans appeler les modèles")
+    run.add_argument("--refresh-benchmarks", action="store_true",
+                     help="Rafraîchir les scores avant de router")
+    run.add_argument("--rank-by-benchmarks", action="store_true",
+                     help="Réordonner les chaînes selon les benchmarks")
+    run.add_argument("--max-cost-eur", type=float, default=None,
+                     help="Budget maximal en euros")
+    run.add_argument("--no-classifier", action="store_true",
+                     help="Désactiver la classification automatique")
+    run.add_argument("--classifier-model", default="qwen3:4b-instruct",
+                     help="Modèle Ollama de classification")
+    run.add_argument("--no-doctor", action="store_true",
+                     help="Skip le pre-flight (utile en CI)")
+    run.add_argument("--no-install", action="store_true",
+                     help="Pre-flight sans installation automatique")
+    run.add_argument("--yes", "-y", action="store_true",
+                     help="Auto-confirmer les installations")
+    run.add_argument("--verbose", "-v", action="store_true")
+    run.set_defaults(func=cmd_batch_run)
+
+    return p
+
+
+def main(argv: list[str] | None = None) -> int:
+    p = _make_parser()
+    args = p.parse_args(argv)
+    return args.func(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

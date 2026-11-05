@@ -1,0 +1,105 @@
+# Copyright 2026 <VOTRE NOM / ORGANISATION>
+# SPDX-License-Identifier: Apache-2.0
+
+providers:
+  groq:
+    type: openai_compat
+    base_url: https://api.groq.com/openai/v1
+    secret_name: GROQ_API_KEY
+  openrouter:
+    type: openai_compat
+    base_url: https://openrouter.ai/api/v1
+    secret_name: OPENROUTER_API_KEY
+    extra_headers:
+      HTTP-Referer: "http://localhost:8000"
+      X-Title: "llm-gateway"
+  mistral:
+    type: openai_compat
+    base_url: https://api.mistral.ai/v1
+    secret_name: MISTRAL_API_KEY
+  google_ai:
+    type: openai_compat
+    base_url: https://generativelanguage.googleapis.com/v1beta/openai
+    secret_name: GOOGLE_API_KEY
+  ollama:
+    type: ollama
+    base_url: http://localhost:11434
+    local: true
+
+models:
+  # --- Providers cloud ---
+  "qwen/qwen3.8-27b":
+    provider: groq
+  "thinkingmachines/inkling:free":
+    provider: openrouter
+  "mistral-large-3":
+    provider: mistral
+  "gemma-4-31b-it":
+    provider: google_ai
+
+  # --- Ollama local (size_gb pour le hardware-aware) ---
+  "qwen-27bauto":
+    provider: ollama
+    model_name: "qwen3.6:27b-q4_K_M"
+    size_gb: 16.0
+  "qwen-35bauto":
+    provider: ollama
+    model_name: "qwen3.6:35b-a3b-mtp-q4_K_M"
+    size_gb: 20.0
+  "qwen2.5vl:7b-q4_K_M":
+    provider: ollama
+    model_name: "qwen2.5vl:7b"
+    size_gb: 6.0
+
+domains:
+  code_debug:
+    chain:
+      - "thinkingmachines/inkling:free"
+      - "qwen-27bauto"
+      - "qwen-35bauto"
+    max_tokens: 4096
+  thinking:
+    chain:
+      - "qwen/qwen3.8-27b"
+      - "qwen-27bauto"
+      - "thinkingmachines/inkling:free"
+      - "qwen-35bauto"
+    max_tokens: 3072
+  problem_solving:
+    chain:
+      - "qwen/qwen3.8-27b"
+      - "qwen-27bauto"
+      - "qwen-35bauto"
+    max_tokens: 3072
+  translation:
+    chain:
+      - "mistral-large-3"
+      - "gemma-4-31b-it"
+      - "qwen-27bauto"
+    max_tokens: 1024
+  fact_checking:
+    chain:
+      - "qwen/qwen3.8-27b"
+      - "gemma-4-31b-it"
+      - "qwen-27bauto"
+    max_tokens: 2048
+  safety:
+    chain:
+      - "qwen-27bauto"
+      - "qwen/qwen3.8-27b"
+    max_tokens: 1024
+  red_teaming:
+    chain:
+      - "qwen-27bauto"
+      - "qwen/qwen3.8-27b"
+    max_tokens: 1024
+  prompt_creation:
+    chain:
+      - "gemma-4-31b-it"
+      - "qwen-27bauto"
+    max_tokens: 2048
+  multimodal_extraction:
+    chain:
+      - "gemma-4-31b-it"
+      - "qwen2.5vl:7b-q4_K_M"            # Ollama multimodal local
+    max_tokens: 2048

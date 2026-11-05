@@ -1,0 +1,84 @@
+# Copyright 2026 <VOTRE NOM / ORGANISATION>
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0.
+
+# ─── Python byte-compiled / cache ────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# ─── Distribution / packaging ────────────────────────────────────
+.Python
+build/
+dist/
+*.egg-info/
+*.egg
+.eggs/
+wheels/
+
+# ─── Environnements virtuels ─────────────────────────────────────
+.venv/
+venv/
+env/
+ENV/
+
+# ─── Tests & couverture ──────────────────────────────────────────
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+.tox/
+.nox/
+
+# ─── Linters & typage ────────────────────────────────────────────
+.mypy_cache/
+.ruff_cache/
+.dmypy.json
+
+# ─── IDE / éditeurs ──────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*~
+*.code-workspace
+
+# ─── Secrets & config locale ─────────────────────────────────────
+.env
+.env.*
+!.env.example
+config/models.yaml
+config/policy.yaml
+secrets.yaml
+*.key
+*.pem
+*.p12
+
+# ─── Données locales de batch (I/O) ──────────────────────────────
+data/
+inputs/
+outputs/
+reports/
+*.jsonl
+!tests/fixtures/*.jsonl
+
+# ─── Benchmarks : on garde uniquement les exemples manuels ───────
+# Les fichiers f5_safety.json et rws_translation.json sont COMMITTÉS
+# (ce sont des exemples/documentation, pas des caches).
+# Les caches auto-fetchés (BenchLM, RankLLMs) sont ignorés.
+benchmarks_cache/benchlm_*.json
+benchmarks_cache/rankllms_*.json
+
+# ─── Logs ────────────────────────────────────────────────────────
+*.log
+logs/
+
+# ─── OS ──────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ─── Artefacts de build ──────────────────────────────────────────
+*.whl
+*.tar.gz
