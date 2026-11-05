@@ -127,6 +127,119 @@ def cmd_setup(args: argparse.Namespace) -> int:
     print(f"\n✅ {n} modèle(s) installé(s) sur {len(report.missing_models)}.")
     return 0
 
+def cmd_setup_secrets(args: argparse.Namespace) -> int:
+    from llm_gateway.secrets import _BACKEND_FACTORIES, save_backend_config
+
+    print("\n=== Configuration des secrets ===\n")
+    print("Sur quelle machine travaillez-vous ?")
+    print("  1) Machine personnelle (Windows / Mac / Linux)")
+    print("  2) Machine d'entreprise (Windows / Mac / Linux)")
+    print("  3) Cloud (AWS, Azure, GCP)")
+
+    choice = input("\nVotre choix [1-3] : ").strip()
+
+    if choice == "1":
+        print("\nCoffres disponibles :")
+        print("  a) PowerShell Vault (Windows, recommandé)")
+        print("  b) 1Password CLI (Mac / Linux / Windows)")
+        print("  c) Fichier chiffré local (via cryptography, mot de passe maître)")
+        sub = input("Choix [a-c] : ").strip()
+
+        if sub == "a":
+            backend = "powershell_vault"
+            options = {}
+            print("\nInstructions :")
+            print("  Install-Module Microsoft.PowerShell.SecretManagement -Scope CurrentUser")
+            print("  Install-Module Microsoft.PowerShell.SecretStore -Scope CurrentUser")
+            print("  Register-SecretVault -Name LocalVault -ModuleName Microsoft.PowerShell.SecretStore -DefaultVault")
+        elif sub == "b":
+            backend = "1password"
+            vault = input("Nom du vault 1Password (défaut: Private) : ").strip() or "Private"
+            options = {"vault": vault}
+        else:
+            backend = "local_encrypted"
+            options = {}
+            print("\n⚠️  Backend local chiffré : vous devrez saisir un mot de passe à chaque batch.")
+    elif choice == "2":
+        print("\nCoffres entreprise :")
+        print("  a) HashiCorp Vault")
+        print("  b) AWS Secrets Manager")
+        print("  c) Azure Key Vault")
+        sub = input("Choix [a-c] : ").strip()
+        if sub == "a":
+            backend = "hashicorp_vault"
+            options = {
+                "url": input("URL Vault : ").strip(),
+                "token": input("Token Vault : ").strip(),
+                "mount": input("Mount (défaut: secret) : ").strip() or "secret",
+            }
+        elif sub == "b":
+            backend = "aws_secrets_manager"
+            options = {
+                "region": input("Région AWS (défaut: us-east-1) : ").strip() or "us-east-1",
+                "prefix": input("Préfixe (défaut: llm-gateway/) : ").strip() or "llm-gateway/",
+            }
+        else:
+            backend = "azure_key_vault"
+            options = {"vault_url": input("URL du Key Vault : ").strip()}
+    else:
+        backend = "aws_secrets_manager"
+        options = {}
+
+    # Vérifie que les dépendances du backend choisi sont installées
+    from llm_gateway.secrets import missing_requirements
+    missing = missing_requirements(backend)
+    if missing:
+        print(
+            f"\n⚠️  Le backend '{backend}' nécessite le package pip :\n"
+            f"    pip install {missing}\n"
+            f"    (ou pip install -e \".[azure]\" / .[aws] si installé depuis le repo)"
+        )
+        cont = input("Continuer quand même ? [y/N] ").strip().lower()
+        if cont not in ("y", "yes"):
+            print("Abandon.")
+            return 0
+
+    save_backend_config(backend, options)
+
+    # Test immédiat
+    print("\nTest du backend…")
+    try:
+        from llm_gateway.secrets import get_backend
+        b = get_backend()
+        if b.is_available():
+            print(f"✅ Backend '{b.name}' opérationnel.")
+        else:
+            print(
+                f"⚠️  Backend '{b.name}' enregistré mais non disponible.\n"
+                f"    Causes possibles : package pip manquant, credentials invalides, "
+                f"réseau, ou URL mal configurée."
+            )
+    except Exception as e:
+        print(f"❌ Erreur : {e}")
+        return 1
+
+    # Demande de saisie des clés requises
+    print("\nSaisie des clés API (laisser vide pour ignorer) :")
+    setter = getattr(b, "set", None)
+    for key in [
+        "GROQ_API_KEY", "MISTRAL_API_KEY", "OPENROUTER_API_KEY",
+        "GOOGLE_API_KEY", "NVIDIA_API_KEY",
+        "CLOUDFLARE_API_KEY", "CLOUDFLARE_ACCOUNT_ID",
+    ]:
+        val = input(f"  {key} : ").strip()
+        if not val:
+            continue
+        if setter is None:
+            print(f"    ⚠️  Ce backend ne supporte pas l'écriture programmatique.")
+            print(f"    → Ajoutez '{key}' manuellement dans votre coffre-fort.")
+            continue
+        if setter(key, val):
+            print(f"    ✓ {key} enregistrée")
+        else:
+            print(f"    ⚠️  Échec écriture {key}")
+    print("\n✅ Configuration terminée.")
+    return 0
 
 def cmd_benchmarks_refresh(args: argparse.Namespace) -> int:
     configure_logging(level="INFO")
@@ -466,6 +579,17 @@ def _make_parser() -> argparse.ArgumentParser:
                      help="Auto-confirmer les installations")
     run.add_argument("--verbose", "-v", action="store_true")
     run.set_defaults(func=cmd_batch_run)
+    # ─── setup-secrets ─────────────────────────────────────────
+    ss = sub.add_parser(
+        "setup-secrets",
+        help="Configurer le coffre-fort de secrets",
+        description=(
+            "Guide interactif pour choisir et configurer un backend de secrets : "
+            "PowerShell Vault, 1Password, HashiCorp Vault, AWS Secrets Manager, "
+            "Azure Key Vault, ou variables d'environnement."
+        ),
+    )
+    ss.set_defaults(func=cmd_setup_secrets)
 
     return p
 

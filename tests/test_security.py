@@ -14,7 +14,8 @@ from llm_gateway.secrets import (
     EnvSecretBackend,
     PowerShellVaultBackend,
     SecretBackend,
-    get_default_backend,
+    get_backend,
+    save_backend_config,
 )
 
 
@@ -101,20 +102,33 @@ def test_vault_no_powershell_raises(_mock_which):
         PowerShellVaultBackend()
 
 
-# ─── get_default_backend() ────────────────────────────────────
-def test_default_backend_env_forced():
-    with patch.dict(os.environ, {"LLM_GATEWAY_USE_ENV": "1"}):
-        backend = get_default_backend()
+# ─── get_backend() / save_backend_config() ─────────────────────
+def test_get_backend_no_config_raises(tmp_path, monkeypatch):
+    """Sans fichier de config, get_backend lève une erreur explicite."""
+    import llm_gateway.secrets as sec
+    monkeypatch.setattr(sec, "_CONFIG_PATH", tmp_path / "nonexistent.yaml")
+    import pytest
+    with pytest.raises(RuntimeError, match="Aucun backend de secrets"):
+        get_backend()
+
+
+def test_save_then_get_backend(tmp_path, monkeypatch):
+    """save_backend_config persiste, get_backend relit."""
+    import llm_gateway.secrets as sec
+    cfg = tmp_path / "secrets.yaml"
+    monkeypatch.setattr(sec, "_CONFIG_PATH", cfg)
+
+    save_backend_config("env", {})
+    backend = get_backend()
     assert isinstance(backend, EnvSecretBackend)
 
 
 @patch("llm_gateway.secrets.shutil.which", return_value="/usr/bin/pwsh")
-def test_default_backend_picks_vault(_mock_which):
-    backend = get_default_backend()
+def test_get_backend_powershell_vault(_mock_which, tmp_path, monkeypatch):
+    import llm_gateway.secrets as sec
+    cfg = tmp_path / "secrets.yaml"
+    monkeypatch.setattr(sec, "_CONFIG_PATH", cfg)
+
+    save_backend_config("powershell_vault", {})
+    backend = get_backend()
     assert isinstance(backend, PowerShellVaultBackend)
-
-
-@patch("llm_gateway.secrets.shutil.which", return_value=None)
-def test_default_backend_falls_back_to_env(_mock_which):
-    backend = get_default_backend()
-    assert isinstance(backend, EnvSecretBackend)

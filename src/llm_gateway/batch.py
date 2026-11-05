@@ -1,27 +1,16 @@
 # Copyright 2026 <VOTRE NOM / ORGANISATION>
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# SPDX-License-Identifier: Apache-2.0
 
 """Orchestrateur de batch : checkpointing, reprise, dry-run, budget, rapport."""
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
+import os
 import pathlib
 import time
-import base64
-import pathlib as _pathlib
 from dataclasses import dataclass, field
 
 from llm_gateway.benchmarks.aggregator import BenchmarkAggregator
@@ -38,7 +27,7 @@ from llm_gateway.providers.ollama import OllamaProvider
 from llm_gateway.providers.openai_compat import OpenAICompatibleProvider
 from llm_gateway.quota import QuotaManager
 from llm_gateway.router import Router
-from llm_gateway.secrets import SecretBackend, get_default_backend
+from llm_gateway.secrets import SecretBackend, get_backend
 
 log = logging.getLogger(__name__)
 
@@ -98,7 +87,20 @@ class BatchRunner:
         self._benchmarks = benchmarks
         self._hardware = hardware
         self._guardrail = guardrail or NoOpGuardrail()
-        self._secrets = secrets or get_default_backend()
+
+        # Résolution explicite du backend de secrets (pas de bascule silencieuse)
+        if secrets is not None:
+            self._secrets = secrets
+        else:
+            try:
+                self._secrets = get_backend()
+            except RuntimeError as e:
+                raise RuntimeError(
+                    f"{e}\n"
+                    "Lancez `llm-gateway setup-secrets` ou ouvrez l'onglet "
+                    "Configuration de la GUI."
+                ) from e
+
         self._classifier = classifier
         self._classifier_model = classifier_model
         self._disable_classifier = disable_classifier
@@ -106,6 +108,54 @@ class BatchRunner:
         self._resume = resume
         self._dry_run = dry_run
         self._sample_size = sample_size
+
+    # ────────────────────────────────────────────────────────────
+    # Refresh lazy des benchmarks (au démarrage d'un batch)
+    # ────────────────────────────────────────────────────────────
+    def _maybe_refresh_benchmarks(self) -> None:
+        """Rafraîchit le cache benchmarks si plus vieux que N jours.
+
+        Contrôlé par la variable d'environnement LLM_GATEWAY_BENCHMARK_TTL_DAYS
+        (défaut: 14). Non bloquant : une erreur réseau est un simple warning.
+        """
+        ttl_days = int(os.environ.get("LLM_GATEWAY_BENCHMARK_TTL_DAYS", "14"))
+        cache_dir = pathlib.Path("benchmarks_cache")
+
+        if cache_dir.exists():
+            latest = max(
+                (p.stat().st_mtime for p in cache_dir.glob("*.json")),
+                default=0.0,
+            )
+            age_days = (time.time() - latest) / 86400 if latest else 999.0
+            if age_days < ttl_days:
+                log.info("Benchmarks à jour (%.1f jours < %d)", age_days, ttl_days)
+                return
+            log.info(
+                "Benchmarks obsolètes (%.1f jours), rafraîchissement…",
+                age_days,
+            )
+        else:
+            log.info("Premier lancement : rafraîchissement initial des benchmarks")
+
+        try:
+            from llm_gateway.benchmarks.base import TaskCategory
+            from llm_gateway.benchmarks.benchlm import BenchLMAdapter
+            from llm_gateway.benchmarks.f5_safety import F5SafetyAdapter
+            from llm_gateway.benchmarks.rankllms import RankLLMsAdapter
+            from llm_gateway.benchmarks.rws_translation import RWSTranslationAdapter
+
+            sources = [
+                BenchLMAdapter(),
+                RankLLMsAdapter(),
+                F5SafetyAdapter(),
+                RWSTranslationAdapter(),
+            ]
+            agg = BenchmarkAggregator(sources, force_refresh=True)
+            for cat in TaskCategory:
+                agg.get_scores(cat)
+            log.info("Benchmarks rafraîchis")
+        except Exception as e:
+            log.warning("Rafraîchissement benchmarks échoué (non bloquant) : %s", e)
 
     # ────────────────────────────────────────────────────────────
     # Construction des providers
@@ -209,7 +259,7 @@ class BatchRunner:
         est_in = int(in_tokens * factor)
         est_out = int(out_tokens * factor)
 
-        print(f"\n=== DRY-RUN ===")
+        print("\n=== DRY-RUN ===")
         print(f"Total tâches        : {total}")
         print(f"Échantillon         : {len(samples)}")
         print(f"Tokens entrée est.  : {est_in:,}")
@@ -225,6 +275,9 @@ class BatchRunner:
     # Run réel
     # ────────────────────────────────────────────────────────────
     def _run_real(self) -> BatchStats:
+        # Refresh lazy AVANT tout appel (non bloquant si échec)
+        self._maybe_refresh_benchmarks()
+
         providers = self._build_providers()
         if not providers:
             raise RuntimeError("Aucun provider disponible (secrets ?)")
@@ -320,30 +373,34 @@ class BatchRunner:
                 )
                 continue
 
-            # 3) Routage
-            log.info("[%s] route domain=%s sensitivity=%s",
-                     task_id, domain, sensitivity)
-            
+            # 3) Préparation éventuelle de l'image
+            log.info(
+                "[%s] route domain=%s sensitivity=%s",
+                task_id, domain, sensitivity,
+            )
             image_b64: str | None = None
             image_ref = task.get("image_path") or task.get("image_b64")
             if image_ref:
                 if image_ref.startswith("data:"):
                     image_b64 = image_ref.split(",", 1)[1]
                 else:
-                    img_path = _pathlib.Path(image_ref)
+                    img_path = pathlib.Path(image_ref)
                     if img_path.exists():
                         image_b64 = base64.b64encode(
                             img_path.read_bytes()
                         ).decode("ascii")
                     else:
-                        log.warning("[%s] image_path introuvable: %s",
-                                    task_id, image_ref)
-                        
+                        log.warning(
+                            "[%s] image_path introuvable: %s", task_id, image_ref,
+                        )
+
+            # 4) Routage (router.route doit accepter image_b64)
             result = router.route(
                 task_text=text,
                 domain=domain,
                 sensitivity=sensitivity,
                 prompt=task.get("prompt"),
+                image_b64=image_b64,
             )
 
             if result.success:

@@ -497,6 +497,10 @@ class App(tk.Tk):
         notebook = ttk.Notebook(self)
         notebook.pack(fill="both", expand=True, padx=10, pady=10)
 
+        # Onglet Configuration EN PREMIER (obligatoire avant le reste)
+        self.secrets_tab = SecretsTab(notebook)
+        notebook.add(self.secrets_tab, text="Configuration")
+
         self.prepare_tab = PrepareTab(notebook)
         notebook.add(self.prepare_tab, text="1. Préparer les données")
 
@@ -506,6 +510,69 @@ class App(tk.Tk):
         self.results_tab = ResultsTab(notebook)
         notebook.add(self.results_tab, text="3. Voir les résultats")
 
+        # Au premier lancement, ouvrir directement l'onglet Configuration
+        config_file = pathlib.Path.home() / ".llm-gateway" / "secrets.yaml"
+        if not config_file.exists():
+            notebook.select(self.secrets_tab)
+            messagebox.showinfo(
+                "Configuration requise",
+                "Avant de commencer, choisissez où stocker vos clés API "
+                "dans l'onglet Configuration.",
+            )
+
+class SecretsTab(ttk.Frame):
+    def __init__(self, master: tk.Misc) -> None:
+        super().__init__(master, padding=20)
+        self._build()
+
+    def _build(self) -> None:
+        ttk.Label(self, text="Coffre-fort de secrets",
+                  font=("", 12, "bold")).pack(anchor="w", pady=(0, 12))
+
+        self.backend_var = tk.StringVar(value="powershell_vault")
+        backends = [
+            ("PowerShell Vault (Windows)", "powershell_vault"),
+            ("1Password CLI", "1password"),
+            ("HashiCorp Vault", "hashicorp_vault"),
+            ("AWS Secrets Manager", "aws_secrets_manager"),
+            ("Azure Key Vault", "azure_key_vault"),
+            ("Variables d'environnement (⚠ non chiffré)", "env"),
+        ]
+        for label, val in backends:
+            ttk.Radiobutton(
+                self, text=label, variable=self.backend_var, value=val,
+            ).pack(anchor="w", pady=2)
+
+        self.options_frame = ttk.Frame(self)
+        self.options_frame.pack(fill="x", pady=(12, 12))
+
+        ttk.Button(self, text="Enregistrer la configuration",
+                   command=self._save).pack(pady=8)
+        ttk.Button(self, text="Tester la connexion",
+                   command=self._test).pack(pady=4)
+
+        self.status_var = tk.StringVar()
+        ttk.Label(self, textvariable=self.status_var,
+                  foreground="gray").pack(anchor="w", pady=(8, 0))
+
+    def _save(self) -> None:
+        from llm_gateway.secrets import save_backend_config
+        backend = self.backend_var.get()
+        options = {}  # à enrichir avec champs si HashiCorp/AWS/Azure
+        save_backend_config(backend, options)
+        self.status_var.set(f"✅ Backend '{backend}' enregistré.")
+
+    def _test(self) -> None:
+        try:
+            from llm_gateway.secrets import get_backend
+            b = get_backend()
+            ok = b.is_available()
+            self.status_var.set(
+                f"{'✅' if ok else '⚠'} {b.name} : "
+                f"{'opérationnel' if ok else 'non disponible'}"
+            )
+        except Exception as e:
+            self.status_var.set(f"❌ {e}")
 
 def main() -> None:
     app = App()
