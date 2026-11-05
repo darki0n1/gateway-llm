@@ -2,50 +2,102 @@
 
 ## What is this application for?
 
-The llm-gateway application lets you automatically process a large number of tasks using artificial intelligence models. You provide your data (images, texts, CSV files, URLs) and an instruction. The application selects the most suitable model, checks the quality of each response, and presents you with a complete report.
+The llm-gateway application automatically processes a large number of tasks using artificial intelligence models. You provide data (images, texts, CSV files, URLs) and an instruction. The application selects the appropriate model, verifies the quality of each response, and produces a complete report.
 
-## How to use it
+## What you see when you open it
 
-### 1. Open the application
+Open the application by typing `python -m llm_gateway.gui` in a terminal, or by double-clicking the shortcut if you have one.
 
-Launch the application by typing `python -m llm_gateway.gui` in a terminal, or double-click the shortcut if you have one.
+A window appears with four tabs:
 
-A window opens with three tabs.
+- **Configuration**
+- **Prepare data**
+- **Launch processing**
+- **View results**
 
-### 2. Prepare your data (tab "Prepare data")
+On first launch, the **Configuration** tab opens automatically, because the application needs to know where your access keys to AI services are stored. Once this step is done, it is not requested again.
 
-- **Source type**: choose what you want to process (folder of images, folder of text files, CSV file, or list of URLs).
-- **Location**: click "Browse" and select your folder or file.
-- **Instruction**: keep the default instruction or adapt it (e.g., "Extract the key figures from this chart").
-- **Output file**: specify where to save the task file (`.jsonl` format).
-- Click "Generate task file". A message confirms the number of tasks created.
+## 1. Configuration (first time only)
 
-### 3. Launch processing (tab "Launch processing")
+The application needs access to external AI services or to models installed on your machine. These services require access keys. These keys must be stored in a secure place, never in a visible text file.
 
-- **Input file**: select the `.jsonl` file you just created.
-- **Output file**: specify where to save the results.
-- **Configuration**: select the `config/models.yaml` file (provided with the application).
-- **Maximum budget**: optional, in euros. The application stops if the estimated cost exceeds this amount.
-- Click "Launch processing". A progress bar shows the progress.
+The Configuration tab offers several options:
 
-### 4. View results (tab "View results")
+- **PowerShell Vault** — the recommended solution on Windows. Keys are stored in the secret manager built into Windows.
+- **1Password** — if you already use this password manager.
+- **HashiCorp Vault, AWS Secrets Manager, Azure Key Vault** — if your organization uses one of these services.
+- **Environment variables** — not recommended, as unencrypted.
 
-- **Summary**: the number of approved tasks, tasks to review, failed tasks, total cost, and distribution by model.
-- **To review**: a list of tasks whose response did not pass quality control. For each, you see the produced response, the reason for flagging, and two buttons: "Accept" or "Reject".
-- **All**: the complete list of tasks with their status.
+Choose the option that fits your situation. Click **Save configuration**, then **Test connection** to verify everything works. The application then tells you whether the keys are accessible.
+
+## 2. Prepare data
+
+This tab turns your files into a list of tasks that the application can process.
+
+- **Source type**: select what you want to process.
+  - Folder of images (screenshots, charts, tables)
+  - Folder of text files
+  - CSV file
+  - List of URLs
+- **Location**: click **Browse** and select your folder or file.
+- **CSV column**: fill in only if you chose a CSV file. Specify the column name containing the text to process.
+- **Instruction**: what you ask the model. For a folder of images, the default instruction is "Analyze this image and describe what you see." To extract figures from a chart, replace it with "Extract the key figures from this chart."
+- **Output file**: specify where to save the task list (`.jsonl` extension).
+
+Click **Generate task file**. A message confirms the number of tasks prepared.
+
+## 3. Launch processing
+
+This tab sends the tasks to the AI models.
+
+- **Input file**: select the `.jsonl` file prepared in the previous step.
+- **Results file**: specify where to save the responses.
+- **Configuration**: select the `config/models.yaml` file provided with the application. It contains the list of available models and selection rules.
+- **Maximum budget**: optional. Specify an amount in euros so the application stops if the cost exceeds this limit.
+
+Click **Launch processing**. A progress bar shows the progress. Depending on the number of tasks and the models used, processing may take from a few minutes to several hours.
+
+If processing is interrupted (outage, closing the window), relaunch it with the same results file: the application resumes where it stopped.
+
+## 4. View results
+
+This tab displays what was produced.
+
+- **Summary**: number of approved tasks, tasks to review, failed tasks, total cost, distribution by model.
+- **To review**: list of tasks whose response did not pass the automatic quality check. Each line shows the task identifier and the reason for flagging. Click a line to see the response produced and decide: **Accept** or **Reject**.
+- **All**: complete list of tasks with their status, the model used, and the cost.
 
 ## What to do when something is flagged
 
-Open the "To review" tab. Each line corresponds to a task whose response is considered uncertain. Read the response and the reason ("inconsistent number", "suspected hallucination", etc.). Decide: accept the response, or reject it. Your decision is recorded.
+Open the **To review** tab. Each flag indicates why the response was considered uncertain: "number inconsistent with source", "suspected hallucination", "citation not verified".
+
+Read the response produced, compare it to the original document or image, then decide: **Accept** (the response is validated, it joins the final results) or **Reject** (the response is discarded).
+
+This is the only moment your personal judgment is required. All other tasks are processed automatically.
+
+## Processing screenshots and images
+
+The application can analyze images: screenshots, financial charts, dashboards, scanned documents.
+
+To do so:
+
+1. In the **Prepare data** tab, choose **Folder of images**.
+2. Select the folder containing your images (supported formats: `.png`, `.jpg`, `.jpeg`, `.webp`, `.bmp`).
+3. Adapt the instruction: for example "Extract the quarterly revenue and operating margin shown on this chart."
+4. Click **Generate task file**, then launch processing normally.
+
+**Important privacy note**: if your images contain sensitive data (non-public figures, personal information, visible identifiers), open the Configuration tab before launching processing and verify that the default sensitivity is set to `confidential`. This ensures the images are processed only by a local model, with no transmission over the Internet.
 
 ## What you don't have to do
 
-- Write JSON files manually.
-- Understand what a language model is.
-- Manage API keys (this is done once, by the person who installs the application).
+- Manually write configuration files.
+- Understand how AI models work internally.
+- Choose which model to use: the application does this automatically based on the nature of each task.
+- Install technical components: the person who installed the application handled this once.
 
-## Need help?
+## Need help
 
-- Run `llm-gateway doctor --config config/models.yaml` to check that everything is in place.
-- See the `README.md` for technical aspects.
-- If you encounter a problem, check that the `config/models.yaml` file exists and that the recommended Ollama models are installed (`llm-gateway setup --config config/models.yaml`).
+- To check that everything is in place: `llm-gateway doctor --config config/models.yaml` in a terminal.
+- To install missing local models: `llm-gateway setup --config config/models.yaml`.
+- For technical aspects: see the `README.md` file.
+- If an error appears, it usually indicates the cause. The most common problems are: a missing model, a file not found, or insufficient disk space.

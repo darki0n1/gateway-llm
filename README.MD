@@ -25,10 +25,12 @@ Les gateways LLM existants (LiteLLM, OpenRouter, Portkey…) optimisent le routa
 1. **Cascade par qualité** — la chaîne de modèles est ordonnée par benchmarks (meilleurs d'abord), les free trials en tête pour être drainés en priorité.
 2. **Guardrail en filtre final** — la vérification qualité (NeMo, NoOp) tourne **une fois** sur la première réponse réussie. Un guardrail en échec **termine** la chaîne et la tâche part en revue humaine. Il ne relance pas la cascade.
 3. **Benchmarks dynamiques** — les scores de BenchLM / RankLLMs / F5 / RWS peuvent réordonner la chaîne automatiquement (`--rank-by-benchmarks`).
-4. **Politique de résidence** — chaque tâche porte une sensibilité (`public`, `internal`, `confidential`) qui filtre les providers autorisés avant toute tentative.
-5. **Budget par lot** — un plafond optionnel (`--max-cost-eur`) arrête d'escalader quand il serait dépassé.
-6. **Checkpointing** — la sortie JSONL est écrite ligne par ligne avec `fsync`. `--resume` reprend après interruption.
-7. **Hardware-aware** — la VRAM est détectée (`nvidia-smi`, `rocm-smi`) et un ratio taille/VRAM est loggé, **sans bloquer** par défaut.
+4. **Refresh automatique des benchmarks** — au démarrage d'un batch, si le cache a plus de 14 jours (configurable via `LLM_GATEWAY_BENCHMARK_TTL_DAYS`), il est rafraîchi automatiquement. Combiné au workflow GitHub Actions bi-hebdomadaire, l'utilisateur n'a jamais à lancer `benchmarks refresh` manuellement.
+5. **Politique de résidence** — chaque tâche porte une sensibilité (`public`, `internal`, `confidential`) qui filtre les providers autorisés avant toute tentative.
+6. **Budget par lot** — un plafond optionnel (`--max-cost-eur`) arrête d'escalader quand il serait dépassé.
+7. **Checkpointing** — la sortie JSONL est écrite ligne par ligne avec `fsync`. `--resume` reprend après interruption.
+8. **Hardware-aware** — la VRAM est détectée (`nvidia-smi`, `rocm-smi`) et un ratio taille/VRAM est loggé, **sans bloquer** par défaut.
+9. **Secrets explicites** — aucun backend de secrets par défaut. L'utilisateur choisit entre PowerShell Vault, 1Password, HashiCorp Vault, AWS Secrets Manager, Azure Key Vault, ou variables d'environnement (déconseillé).
 
 ## Installation
 
@@ -36,11 +38,17 @@ Les gateways LLM existants (LiteLLM, OpenRouter, Portkey…) optimisent le routa
 git clone https://github.com/<vous>/llm-gateway.git
 cd llm-gateway
 
-# Installation minimale (NoOpGuardrail par défaut)
+# Installation minimale (NoOpGuardrail par défaut, pas de backend cloud)
 pip install -e .
 
-# Avec guardrails NeMo
+# Avec guardrails NeMo (détection d'hallucinations)
 pip install -e ".[guardrails]"
+
+# Avec backend cloud AWS Secrets Manager
+pip install -e ".[aws]"
+
+# Avec backend cloud Azure Key Vault
+pip install -e ".[azure]"
 
 # Avec outils de dev
 pip install -e ".[dev]"
@@ -55,22 +63,38 @@ cp config/models.example.yaml config/models.yaml
 cp config/policy.example.yaml config/policy.yaml
 ```
 
-`config/models.yaml` déclare les providers, les modèles, leurs prix et les chaînes par domaine. `config/policy.yaml` déclare les règles de résidence (`confidential → ollama uniquement`, etc.).
+`config/models.yaml` déclare les providers, les modèles, leurs prix et les chaînes par domaine. Il doit être **gitignoré** (ne jamais committer vos secrets ni vos chaînes de production). `config/policy.yaml` déclare les règles de résidence.
 
-### 2. Diagnostic et installation
+### 2. Configuration des secrets
+
+Au premier lancement, `llm-gateway` exige un backend de secrets configuré. Aucune bascule silencieuse vers un `.env`.
 
 ```bash
-# Vérifie que tout est en place (deps, Ollama, modèles locaux)
+llm-gateway setup-secrets
+```
+
+Un assistant interactif vous propose :
+
+- **Machine personnelle** : PowerShell Vault (Windows, recommandé), 1Password CLI
+- **Machine d'entreprise** : HashiCorp Vault, AWS Secrets Manager, Azure Key Vault
+- **Fallback explicite** : variables d'environnement (averti comme non chiffré)
+
+Le choix est persisté dans `~/.llm-gateway/secrets.yaml`. Ce fichier ne contient **jamais** de secret final : seulement le nom du backend et ses options de connexion (URL, région, vault). Les clés API restent dans le coffre-fort natif (PowerShell SecretStore, 1Password, HashiCorp, AWS, Azure).
+
+### 3. Diagnostic et installation des modèles
+
+```bash
+# Vérifie deps Python, binaire Ollama, daemon, modèles locaux, stockage secrets
 llm-gateway doctor --config config/models.yaml
 
 # Télécharge les modèles Ollama manquants (interactif)
 llm-gateway setup --config config/models.yaml
 ```
 
-### 3. Lancer un batch
+### 4. Lancer un batch
 
 ```bash
-# Depuis la racine du projet (important pour la résolution des chemins)
+# Depuis la racine du projet
 llm-gateway batch run \
   --input prompts.jsonl \
   --output results.jsonl \
@@ -89,10 +113,11 @@ Entrée `prompts.jsonl`, une tâche par ligne :
 Sortie enrichie `results.jsonl` :
 
 ```jsonl
-{"id": "t1", "status": "approved", "response": "...", "model_used": "qwen-27bauto", "provider": "ollama", "guardrail_passed": true, "cost_eur": 0.0, "escalations": 0}
+{"id": "t1", "status": "approved", "response": "...", "model_used": "qwen-27bauto", "provider": "ollama", "guardrail_passed": true, "cost_eur": 0.0, "escalations": 0, "had_image": false}
+{"id": "t2", "status": "approved", "response": "...", "model_used": "gemma-4-31b-it", "provider": "google_ai", "guardrail_passed": true, "cost_eur": 0.0, "escalations": 0, "had_image": true}
 ```
 
-### 4. Estimer avant de lancer (dry-run)
+### 5. Estimer avant de lancer (dry-run)
 
 ```bash
 llm-gateway batch run --input prompts.jsonl --dry-run --sample 20
@@ -100,7 +125,7 @@ llm-gateway batch run --input prompts.jsonl --dry-run --sample 20
 
 Extrapole le coût total et le temps d'exécution **sans appeler** les modèles.
 
-### 5. Reprendre après interruption
+### 6. Reprendre après interruption
 
 ```bash
 llm-gateway batch run --input prompts.jsonl --output results.jsonl --resume
@@ -108,33 +133,56 @@ llm-gateway batch run --input prompts.jsonl --output results.jsonl --resume
 
 Saute les IDs déjà présents dans `results.jsonl`.
 
-### 6. Rafraîchir les benchmarks
+### 7. Rafraîchir les benchmarks manuellement (optionnel)
 
 ```bash
 llm-gateway benchmarks refresh
 ```
 
-Récupère les derniers scores de BenchLM et RankLLMs, écrit le cache avec TTL 24h.
+Récupère les derniers scores de BenchLM et RankLLMs. En pratique, rarement nécessaire : le refresh lazy (démarrage de batch) et le workflow GitHub Actions le font automatiquement.
 
 ## CLI — Vue d'ensemble
 
 | Commande | Description |
 | :--- | :--- |
-| `llm-gateway doctor` | Diagnostic de l'environnement |
-| `llm-gateway setup` | Installation guidée des modèles manquants |
+| `llm-gateway doctor` | Diagnostic de l'environnement (deps, Ollama, secrets) |
+| `llm-gateway setup` | Installation guidée des modèles Ollama manquants |
+| `llm-gateway setup-secrets` | Choisir et configurer le backend de secrets |
 | `llm-gateway batch run --input ... --output ...` | Lance un batch |
 | `--resume` | Reprend un batch interrompu |
 | `--dry-run --sample N` | Estime sans appeler |
-| `--refresh-benchmarks` | Force le rafraîchissement des scores |
+| `--refresh-benchmarks` | Force le rafraîchissement immédiat |
 | `--rank-by-benchmarks` | Réordonne les chaînes par benchmarks |
 | `--max-cost-eur X` | Budget maximal en euros |
 | `--no-classifier` | Désactive la classification automatique |
-| `--classifier-model NAME` | Modèle Ollama utilisé pour classifier |
-| `llm-gateway intake from-folder` | Convertit un dossier d'images en JSONL |
-| `llm-gateway intake from-text` | Convertit un dossier de textes en JSONL |
-| `llm-gateway intake from-csv` | Convertit un CSV en JSONL |
-| `llm-gateway intake from-urls` | Convertit une liste d'URLs en JSONL |
+| `--classifier-model NAME` | Modèle Ollama de classification |
+| `llm-gateway intake from-folder` | Dossier d'images → JSONL |
+| `llm-gateway intake from-text` | Dossier de textes → JSONL |
+| `llm-gateway intake from-csv` | CSV → JSONL |
+| `llm-gateway intake from-urls` | URLs → JSONL (respecte robots.txt) |
 | `llm-gateway benchmarks refresh` | Force le rafraîchissement du cache |
+
+## Backends de secrets supportés
+
+| Backend | Installation | Cas d'usage |
+| :--- | :--- | :--- |
+| PowerShell Vault | Natif Windows | Machine perso Windows (recommandé) |
+| 1Password CLI | Binaire `op` à installer | Machine perso Mac/Linux |
+| HashiCorp Vault | `requests` (déjà installé) | Entreprise DevOps |
+| AWS Secrets Manager | `pip install -e ".[aws]"` | Cloud AWS |
+| Azure Key Vault | `pip install -e ".[azure]"` | Cloud Azure |
+| Variables d'environnement | Aucune | CI pure, déconseillé ailleurs |
+
+La commande `setup-secrets` détecte automatiquement les dépendances manquantes et propose la commande d'installation adaptée.
+
+## Multimodal — lecture de screenshots et KPI
+
+Le domaine `multimodal_extraction` permet d'envoyer une image (screenshot, graphique, tableau) au modèle. Deux backends :
+
+- **Cloud (Google AI Studio)** : `gemma-4-31b-it`, meilleur OCR et compréhension d'interface du panel 2026. Recommandé pour les KPI denses.
+- **Local (Ollama)** : `qwen2.5vl:7b-q4_K_M` (~6 Go), tient sur un GPU 8 Go, fallback quand la politique interdit le cloud ou quand le réseau est absent.
+
+Le champ `image_path` dans le JSONL d'entrée pointe vers un fichier local, ou `image_b64` contient directement la chaîne base64.
 
 ## Architecture
 
@@ -142,7 +190,8 @@ Récupère les derniers scores de BenchLM et RankLLMs, écrit le cache avec TTL 
 llm-gateway/
 ├── pyproject.toml
 ├── README.md · LICENSE · .gitignore
-├── benchmarks_cache/           # exemples manuels + caches auto-générés
+├── benchmarks_cache/           # caches BenchLM/RankLLMs (gitignored)
+│                               # + f5_safety.json / rws_translation.json (commités, maj CI)
 ├── config/
 │   ├── models.example.yaml     # providers, modèles, chaînes par domaine
 │   └── policy.example.yaml     # politique de résidence
@@ -150,19 +199,19 @@ llm-gateway/
 │   ├── providers/              # base, openai_compat, ollama, cloudflare
 │   ├── guardrails/             # base, noop, nemo
 │   ├── benchmarks/             # base, benchlm, rankllms, f5, rws, cache, aggregator, normalizer
-│   ├── router.py               # cascade + guardrail + policy + hardware + budget
+│   ├── router.py               # cascade + guardrail + policy + hardware + budget + multimodal
 │   ├── quota.py                # cooldown temporel (fix bug 429)
 │   ├── budget.py               # plafond par lot
 │   ├── policy.py               # résidence des données
 │   ├── classifier.py           # classification par domaine
 │   ├── checkpoint.py           # reprise après interruption
 │   ├── hardware.py             # détection VRAM
-│   ├── secrets.py              # env ou PowerShell Vault
+│   ├── secrets.py              # 6 backends interchangeables
 │   ├── config.py               # validation pydantic
 │   ├── doctor.py               # diagnostic environnement
 │   ├── installer.py            # téléchargement modèles Ollama
 │   ├── intake.py               # convertisseur de données
-│   ├── gui.py                  # application graphique unifiée (3 onglets)
+│   ├── gui.py                  # application graphique unifiée (4 onglets)
 │   ├── batch.py                # orchestrateur
 │   ├── cli.py                  # argparse
 │   └── logging.py              # NullHandler + dictConfig
@@ -181,7 +230,7 @@ Chaque responsabilité est une **classe** :
 | Classe | Responsabilité |
 | :--- | :--- |
 | `Provider` (ABC) | Interface d'appel à un backend LLM |
-| `OpenAICompatibleProvider` / `OllamaProvider` / `CloudflareProvider` | Implémentations concrètes |
+| `OpenAICompatibleProvider` / `OllamaProvider` / `CloudflareProvider` | Implémentations concrètes (avec support multimodal) |
 | `Router` | Cascade + filtres (policy, quota, hardware) + guardrail |
 | `QuotaManager` | Cooldown par provider sur 429 |
 | `BudgetTracker` | Coût cumulé + plafond |
@@ -191,30 +240,31 @@ Chaque responsabilité est une **classe** :
 | `BenchmarkSource` (ABC) | Interface d'une source de benchmarks |
 | `BenchLMAdapter` / `RankLLMsAdapter` / `F5SafetyAdapter` / `RWSTranslationAdapter` | Implémentations |
 | `BenchmarkCache` | Cache JSON avec TTL |
-| `TaskClassifier` | Classification LLM + fallback regex |
+| `TaskClassifier` | Classification LLM + fallback regex (inclut `multimodal_extraction`) |
 | `Checkpoint` | Reprise après interruption |
 | `HardwareInfo` | Détection VRAM et fit |
 | `SecretBackend` (ABC) | Interface de stockage de secrets |
-| `EnvSecretBackend` / `PowerShellVaultBackend` | Implémentations |
+| `PowerShellVaultBackend` / `OnePasswordBackend` / `HashiCorpVaultBackend` / `AWSSecretsManagerBackend` / `AzureKeyVaultBackend` / `EnvSecretBackend` | 6 implémentations |
 | `Doctor` | Diagnostic de l'environnement |
 | `Installer` | Téléchargement des modèles Ollama |
 | `BatchRunner` | Orchestre le batch complet |
 
-Aucune variable module-level mutable. Chaque instance est injectée explicitement, ce qui rend le code testable et reproductible.
+Aucune variable module-level mutable. Chaque instance est injectée explicitement.
 
 ## Application graphique (GUI)
 
-Pour les utilisateurs non techniques, une application graphique unifiée est disponible :
+Pour les utilisateurs non techniques :
 
 ```bash
 python -m llm_gateway.gui
 ```
 
-Trois onglets :
+Quatre onglets :
 
-1. **Préparer les données** : sélection d'un dossier d'images, de fichiers texte, d'un CSV ou d'une liste d'URLs, et génération du fichier JSONL de tâches.
-2. **Lancer le traitement** : sélection du fichier d'entrée, du fichier de sortie, de la configuration, et lancement du batch avec barre de progression.
-3. **Voir les résultats** : affichage du rapport final (tâches approuvées, à revoir, échouées, coût total), liste des tâches à examiner avec possibilité d'accepter ou rejeter chaque cas.
+0. **Configuration** : choix du backend de secrets (obligatoire au premier lancement, ensuite optionnel).
+1. **Préparer les données** : dossier d'images, de fichiers texte, CSV, ou liste d'URLs → génération du JSONL de tâches.
+2. **Lancer le traitement** : sélection input / output / config / budget, barre de progression.
+3. **Voir les résultats** : rapport (approuvées / à revoir / échouées / coût), liste des tâches signalées avec boutons Accepter / Rejeter, vue complète.
 
 ## Tests
 
