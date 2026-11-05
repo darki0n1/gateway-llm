@@ -1,16 +1,13 @@
 # Copyright 2026 <VOTRE NOM / ORGANISATION>
 # SPDX-License-Identifier: Apache-2.0
 
-"""Diagnostic de l'environnement : deps Python, Ollama, modèles locaux.
-
-Utilisé par `llm-gateway doctor` (rapport seul) et par le pre-flight
-de `batch run` (auto-installation optionnelle).
-"""
+"""Diagnostic de l'environnement : deps Python, Ollama, secrets, modèles."""
 
 from __future__ import annotations
 
 import importlib
 import logging
+import os
 import shutil
 from dataclasses import dataclass, field
 from enum import Enum
@@ -51,23 +48,26 @@ class DoctorReport:
         return any(r.severity == Severity.WARNING for r in self.results)
 
     def print_report(self) -> None:
-        symbols = {
-            Severity.OK: "✓",
-            Severity.WARNING: "⚠",
-            Severity.ERROR: "✗",
-        }
+        symbols = {Severity.OK: "✓", Severity.WARNING: "⚠", Severity.ERROR: "✗"}
         for r in self.results:
             print(f"  {symbols[r.severity]} {r.name}: {r.message}")
             if r.hint:
                 print(f"      → {r.hint}")
 
 
-# Dépendances vérifiées par le doctor.
 _REQUIRED_PY = ["requests", "pydantic", "yaml"]
 _OPTIONAL_PY = {
-    "bs4": "pip install beautifulsoup4  (nécessaire pour intake from-urls)",
-    "nemoguardrails": "pip install -e \".[guardrails]\"  (pour NemoGuardrail)",
+    "bs4": "pip install beautifulsoup4  (intake from-urls)",
+    "nemoguardrails": "pip install -e \".[guardrails]\"  (NemoGuardrail)",
+    "boto3": "pip install -e \".[aws]\"  (AWS Secrets Manager)",
+    "azure.identity": "pip install -e \".[azure]\"  (Azure Key Vault)",
 }
+
+_CLOUD_API_ENV_VARS = [
+    "GROQ_API_KEY", "MISTRAL_API_KEY", "OPENROUTER_API_KEY",
+    "GOOGLE_API_KEY", "NVIDIA_API_KEY",
+    "CLOUDFLARE_API_KEY", "CLOUDFLARE_ACCOUNT_ID",
+]
 
 
 class Doctor:
@@ -82,6 +82,7 @@ class Doctor:
     def run(self) -> DoctorReport:
         report = DoctorReport()
         self._check_python(report)
+        self._check_secret_storage(report)
         has_binary = self._check_ollama_binary(report)
         has_daemon = self._check_ollama_daemon(report) if has_binary else False
         if has_binary and has_daemon and self._required_models:
@@ -89,18 +90,12 @@ class Doctor:
         return report
 
     def _check_python(self, report: DoctorReport) -> None:
-        missing_required = []
-        for mod in _REQUIRED_PY:
-            try:
-                importlib.import_module(mod)
-            except ImportError:
-                missing_required.append(mod)
-
-        if missing_required:
+        missing = [m for m in _REQUIRED_PY if not self._import_ok(m)]
+        if missing:
             report.add(CheckResult(
                 name="Python (requis)",
                 severity=Severity.ERROR,
-                message=f"Manquants : {', '.join(missing_required)}",
+                message=f"Manquants : {', '.join(missing)}",
                 hint="pip install -e .",
             ))
         else:
@@ -110,20 +105,92 @@ class Doctor:
                 message="requests, pydantic, yaml importables",
             ))
 
-        missing_optional = []
-        for mod in _OPTIONAL_PY:
-            try:
-                importlib.import_module(mod)
-            except ImportError:
-                missing_optional.append(mod)
-        if missing_optional:
-            for mod in missing_optional:
+        for mod, hint in _OPTIONAL_PY.items():
+            if not self._import_ok(mod):
                 report.add(CheckResult(
                     name=f"Python (optionnel) : {mod}",
                     severity=Severity.WARNING,
                     message="Absent",
-                    hint=_OPTIONAL_PY[mod],
+                    hint=hint,
                 ))
+
+    @staticmethod
+    def _import_ok(mod: str) -> bool:
+        try:
+            importlib.import_module(mod)
+            return True
+        except ImportError:
+            return False
+
+    def _check_secret_storage(self, report: DoctorReport) -> None:
+        """Vérifie que les secrets sont dans un coffre-fort, pas en .env."""
+        try:
+            from llm_gateway.secrets import _load_config, get_backend
+        except Exception as e:
+            report.add(CheckResult(
+                name="Stockage des secrets",
+                severity=Severity.WARNING,
+                message=f"Impossible de vérifier : {e}",
+            ))
+            return
+
+        cfg = _load_config()
+        if cfg is None or "backend" not in cfg:
+            # Pas de config : détecte .env ou env vars
+            env_file = __import__("pathlib").Path(".env")
+            if env_file.exists():
+                report.add(CheckResult(
+                    name="Stockage des secrets",
+                    severity=Severity.WARNING,
+                    message="Fichier .env détecté (non chiffré)",
+                    hint=(
+                        "Un .env est lisible par tout processus. "
+                        "Lancez : llm-gateway setup-secrets"
+                    ),
+                ))
+                return
+
+            risky = [v for v in _CLOUD_API_ENV_VARS if os.environ.get(v)]
+            if risky:
+                report.add(CheckResult(
+                    name="Stockage des secrets",
+                    severity=Severity.WARNING,
+                    message=f"Variables d'env détectées : {', '.join(risky)}",
+                    hint="Préférez un coffre-fort : llm-gateway setup-secrets",
+                ))
+                return
+
+            report.add(CheckResult(
+                name="Stockage des secrets",
+                severity=Severity.WARNING,
+                message="Aucun backend configuré",
+                hint="Lancez : llm-gateway setup-secrets",
+            ))
+            return
+
+        backend_name = cfg.get("backend", "?")
+        try:
+            backend = get_backend()
+            if backend.is_available():
+                report.add(CheckResult(
+                    name="Stockage des secrets",
+                    severity=Severity.OK,
+                    message=f"Backend '{backend_name}' opérationnel",
+                ))
+            else:
+                report.add(CheckResult(
+                    name="Stockage des secrets",
+                    severity=Severity.WARNING,
+                    message=f"Backend '{backend_name}' configuré mais indisponible",
+                    hint="Vérifiez la connexion au vault et vos credentials",
+                ))
+        except Exception as e:
+            report.add(CheckResult(
+                name="Stockage des secrets",
+                severity=Severity.WARNING,
+                message=f"Backend '{backend_name}' en erreur",
+                hint=str(e)[:120],
+            ))
 
     def _check_ollama_binary(self, report: DoctorReport) -> bool:
         path = shutil.which("ollama")
@@ -132,7 +199,7 @@ class Doctor:
                 name="Ollama (binaire)",
                 severity=Severity.WARNING,
                 message="Introuvable dans le PATH",
-                hint="Installer depuis https://ollama.com/download puis relancer",
+                hint="Installer depuis https://ollama.com/download",
             ))
             return False
         report.add(CheckResult(
@@ -180,13 +247,12 @@ class Doctor:
         installed = self._list_local_models()
         missing = [m for m in self._required_models if m not in installed]
         report.missing_models = missing
-
         if missing:
             report.add(CheckResult(
                 name="Modèles Ollama",
                 severity=Severity.WARNING,
                 message=f"{len(missing)} manquant(s) : {', '.join(missing)}",
-                hint="Lancer : llm-gateway setup  (ou ollama pull <modèle>)",
+                hint="Lancer : llm-gateway setup",
             ))
         else:
             report.add(CheckResult(
