@@ -58,7 +58,6 @@ def test_ask_auto_yes():
     assert inst._ask("Continue ?")
 
 
-@patch("gateway_llm.installer.shutil.which", return_value="/usr/bin/ollama")
 @patch("gateway_llm.installer.requests.get")
 def test_ensure_models_no_missing(mock_get):
     mock_get.return_value = MagicMock(

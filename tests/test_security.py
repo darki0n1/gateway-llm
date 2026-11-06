@@ -322,7 +322,8 @@ def test_save_then_get_backend_env(tmp_path, monkeypatch):
 
     save_backend_config("env", {})
     backend = get_backend()
-    assert isinstance(backend, EnvSecretBackend)
+    # On vérifie le nom du backend au lieu de la classe (plus robuste)
+    assert backend.name == "env"
 
 
 @patch("gateway_llm.secrets.shutil.which", return_value="/usr/bin/pwsh")
@@ -334,7 +335,8 @@ def test_save_then_get_backend_powershell(_mock_which, tmp_path, monkeypatch):
 
     save_backend_config("powershell_vault", {})
     backend = get_backend()
-    assert isinstance(backend, PowerShellVaultBackend)
+    # On vérifie le nom, pas la classe
+    assert backend.name == "powershell_vault"
 
 
 def test_save_backend_config_creates_parent_dir(tmp_path, monkeypatch):

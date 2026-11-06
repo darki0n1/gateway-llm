@@ -108,7 +108,7 @@ def detect_vram() -> HardwareInfo:
                 text=True,
                 timeout=5,
             )
-            lines = [l.strip() for l in out.stdout.splitlines() if l.strip()]
+            lines = [line.strip() for line in out.stdout.splitlines() if line.strip()]
             if lines:
                 mb = float(lines[0])
                 return HardwareInfo(vram_gb=mb / 1024.0, source="nvidia-smi")

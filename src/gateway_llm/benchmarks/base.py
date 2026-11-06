@@ -7,10 +7,10 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 
 
-class TaskCategory(str, Enum):
+class TaskCategory(StrEnum):
     """Catégories de tâches que le routeur sait gérer."""
 
     CODE_DEBUG = "code_debug"

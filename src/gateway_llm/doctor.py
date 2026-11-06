@@ -10,14 +10,14 @@ import logging
 import pathlib
 import shutil
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 
 import requests
 
 log = logging.getLogger(__name__)
 
 
-class Severity(str, Enum):
+class Severity(StrEnum):
     OK = "ok"
     WARNING = "warning"
     ERROR = "error"
@@ -147,6 +147,32 @@ class Doctor:
 
         cfg = _load_config()
         if cfg is None or "backend" not in cfg:
+            # Détection des variables d'environnement qui traînent
+            import os
+
+            risky = [
+                v
+                for v in [
+                    "GROQ_API_KEY",
+                    "MISTRAL_API_KEY",
+                    "OPENROUTER_API_KEY",
+                    "GOOGLE_API_KEY",
+                    "NVIDIA_API_KEY",
+                    "CLOUDFLARE_API_KEY",
+                ]
+                if os.environ.get(v)
+            ]
+            if risky:
+                report.add(
+                    CheckResult(
+                        name="Stockage des secrets",
+                        severity=Severity.WARNING,
+                        message=f"Variables d'env détectées : {', '.join(risky)}",
+                        hint="Préférez un coffre-fort : gateway-llm setup-secrets",
+                    )
+                )
+                return
+
             report.add(
                 CheckResult(
                     name="Stockage des secrets",

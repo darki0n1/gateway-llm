@@ -50,6 +50,10 @@ models:
     provider: ollama
     model_name: "qwen2.5vl:7b"
     size_gb: 6.0
+  "nomic-embed-text":
+    provider: ollama
+    model_name: "nomic-embed-text"
+    size_gb: 0.3
 
 domains:
   code_debug:

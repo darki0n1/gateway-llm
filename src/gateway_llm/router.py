@@ -225,7 +225,7 @@ class Router:
                 guardrail_passed=False,
                 guardrail_reason=gr.reason,
                 escalations=escalations,
-                errors=errors + [f"{model_key}: guardrail rejeté ({gr.reason})"],
+                errors=[*errors, f"{model_key}: guardrail rejeté ({gr.reason})"],
                 cost_eur=model_cost,
             )
 
