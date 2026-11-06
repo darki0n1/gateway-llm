@@ -6,10 +6,10 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 import requests
 
-from typing import Any
 from .base import Provider, ProviderError, ProviderResponse, ProviderUnavailableError
 
 log = logging.getLogger(__name__)
@@ -48,9 +48,7 @@ class OllamaProvider(Provider):
         }
 
         try:
-            resp = requests.post(
-                f"{self.base_url}/api/chat", json=payload, timeout=self._timeout
-            ) # type: ignore[arg-type]
+            resp = requests.post(f"{self.base_url}/api/chat", json=payload, timeout=self._timeout)  # type: ignore[arg-type]
             resp.raise_for_status()
         except requests.exceptions.RequestException as e:
             raise ProviderError(f"{self.name}: {e}") from e

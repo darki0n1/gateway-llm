@@ -347,7 +347,7 @@ class RunTab(ttk.Frame):
                 runner.run()
                 self.after(0, lambda: self._on_success(out))
             except Exception as e:
-                self.after(0, lambda err=e: self._on_error(err)) # type: ignore[misc]
+                self.after(0, lambda err=e: self._on_error(err))  # type: ignore[misc]
 
         self._thread = threading.Thread(target=worker, daemon=True)
         self._thread.start()
@@ -660,6 +660,7 @@ class SecretsTab(ttk.Frame):
 
     def _save(self) -> None:
         from gateway_llm.secrets import save_backend_config
+
         backend = self.backend_var.get()
         options: dict[str, str] = {}  # <--- Modifie cette ligne
         save_backend_config(backend, options)

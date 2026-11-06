@@ -6,10 +6,10 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 import requests
 
-from typing import Any
 from .base import BenchmarkResult, BenchmarkSource, TaskCategory
 from .normalizer import normalize_model_name
 
@@ -42,8 +42,8 @@ class RankLLMsAdapter(BenchmarkSource):
                 f"{_BASE_URL}/leaderboard",
                 params=params,
                 timeout=30,
-            ) # type: ignore[arg-type]
-            
+            )  # type: ignore[arg-type]
+
             resp.raise_for_status()
             data = resp.json()
         except Exception as e:

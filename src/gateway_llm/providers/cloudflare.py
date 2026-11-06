@@ -6,10 +6,10 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 import requests
 
-from typing import Any
 from .base import (
     Provider,
     ProviderError,
@@ -55,9 +55,11 @@ class CloudflareProvider(Provider):
 
         try:
             resp = requests.post(
-                f"{self.base_url}/{model}", headers=headers, json=payload,
+                f"{self.base_url}/{model}",
+                headers=headers,
+                json=payload,
                 timeout=self._timeout,
-            ) # type: ignore[arg-type]        
+            )  # type: ignore[arg-type]
         except requests.exceptions.RequestException as e:
             raise ProviderError(f"{self.name}: {e}") from e
 
