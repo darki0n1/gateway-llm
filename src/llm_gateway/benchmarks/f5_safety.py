@@ -1,4 +1,4 @@
-# Copyright 2026 <VOTRE NOM / ORGANISATION>
+# SPDX-FileCopyrightText: 2026 Amandine Dennieau
 # SPDX-License-Identifier: Apache-2.0
 
 """Adaptateur F5 Labs (CASI / ARS) pour Safety et Red Teaming.

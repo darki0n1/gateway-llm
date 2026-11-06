@@ -1,4 +1,4 @@
-# Copyright 2026 <VOTRE NOM / ORGANISATION>
+# SPDX-FileCopyrightText: 2026 Amandine Dennieau
 # SPDX-License-Identifier: Apache-2.0
 
 """Application graphique unifiée : préparation, lancement, résultats."""
@@ -27,15 +27,15 @@ class PrepareTab(ttk.Frame):
         self._build()
 
     def _build(self) -> None:
-        ttk.Label(
-            self, text="Type de source :", font=("", 10, "bold"),
-        ).grid(row=0, column=0, sticky="w", pady=(0, 4))
+        ttk.Label(self, text="Type de source :").grid(
+            row=0, column=0, sticky="w", pady=(0, 4),
+        )
         self.source_type = tk.StringVar(value="Dossier d'images")
         ttk.Combobox(
             self, textvariable=self.source_type, state="readonly",
             values=[
                 "Dossier d'images",
-                "Dossier de fichiers texte",
+                "Dossier de fichiers texte (.txt, .md, .eml)",
                 "Fichier CSV",
                 "Liste d'URLs (.txt)",
             ],
@@ -56,9 +56,10 @@ class PrepareTab(ttk.Frame):
             row=4, column=0, sticky="w", pady=(12, 4),
         )
         self.column_var = tk.StringVar()
-        ttk.Entry(self, textvariable=self.column_var).grid(
-            row=5, column=0, columnspan=3, sticky="ew",
+        self.column_combo = ttk.Combobox(
+            self, textvariable=self.column_var, state="readonly",
         )
+        self.column_combo.grid(row=5, column=0, columnspan=3, sticky="ew")
 
         ttk.Label(self, text="Consigne envoyée au modèle :").grid(
             row=6, column=0, sticky="w", pady=(12, 4),
@@ -90,7 +91,7 @@ class PrepareTab(ttk.Frame):
 
     def _pick_source(self) -> None:
         stype = self.source_type.get()
-        if "Dossier" in stype:
+        if stype.startswith("Dossier"):
             p = filedialog.askdirectory()
         else:
             p = filedialog.askopenfilename(
@@ -98,6 +99,18 @@ class PrepareTab(ttk.Frame):
             )
         if p:
             self.path_var.set(p)
+            if stype == "Fichier CSV":
+                self._update_csv_columns(pathlib.Path(p))
+
+    def _update_csv_columns(self, csv_path: pathlib.Path) -> None:
+        try:
+            import csv as csv_mod
+            with csv_path.open("r", encoding="utf-8", newline="") as f:
+                reader = csv_mod.reader(f)
+                headers = next(reader, [])
+            self.column_combo["values"] = headers
+        except Exception:
+            self.column_combo["values"] = []
 
     def _pick_output(self) -> None:
         p = filedialog.asksaveasfilename(
@@ -113,26 +126,34 @@ class PrepareTab(ttk.Frame):
             prompt = self.prompt_var.get()
             stype = self.source_type.get()
 
+            if not src.exists():
+                messagebox.showerror("Erreur", f"Le chemin n'existe pas :\n{src}")
+                return
+
             if stype == "Dossier d'images":
                 n = intake_from_folder(src, out, prompt_template=prompt)
-            elif stype == "Dossier de fichiers texte":
+            elif stype.startswith("Dossier de fichiers texte"):
                 n = intake_from_text(src, out, prompt_template=prompt)
             elif stype == "Fichier CSV":
                 col = self.column_var.get().strip()
                 if not col:
-                    messagebox.showerror("Erreur", "Indiquez la colonne CSV.")
+                    messagebox.showerror(
+                        "Erreur",
+                        "Sélectionnez la colonne CSV qui contient le texte.",
+                    )
                     return
                 n = intake_from_csv(src, out, column=col, prompt_template=prompt)
             else:
                 n = intake_from_urls(src, out, prompt_template=prompt)
 
             messagebox.showinfo(
-                "Succès", f"{n} tâches écrites dans :\n{out}",
+                "Succès",
+                f"{n} tâches écrites dans :\n{out}\n\n"
+                "Passez à l'onglet « Lancer le traitement ».",
             )
         except Exception as e:
             messagebox.showerror("Erreur", str(e))
-
-
+            
 # ─── Onglet 2 : Lancement du traitement ────────────────────────
 class RunTab(ttk.Frame):
     def __init__(self, master: tk.Misc) -> None:

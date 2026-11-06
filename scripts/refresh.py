@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright 2026 <VOTRE NOM / ORGANISATION>
+# SPDX-FileCopyrightText: 2026 Amandine Dennieau
 # SPDX-License-Identifier: Apache-2.0
 
 """Scrape le leaderboard F5 Labs CASI/ARS et écrit benchmarks_cache/f5_safety.json.

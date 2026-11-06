@@ -1,4 +1,4 @@
-# Copyright 2026 <VOTRE NOM / ORGANISATION>
+# SPDX-FileCopyrightText: 2026 Amandine Dennieau
 # SPDX-License-Identifier: Apache-2.0
 
 """Point d'entrée CLI de llm-gateway."""

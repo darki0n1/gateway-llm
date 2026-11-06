@@ -1,4 +1,4 @@
-# Copyright 2026 <VOTRE NOM / ORGANISATION>
+# SPDX-FileCopyrightText: 2026 Amandine Dennieau
 # SPDX-License-Identifier: Apache-2.0
 
 """Tests de sécurité : secrets, pas de shell=True, échappement, imports lazy."""
