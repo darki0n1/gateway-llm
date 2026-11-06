@@ -16,8 +16,8 @@ import json
 import logging
 import pathlib
 import time
-from dataclasses import asdict, dataclass, field
-from typing import Iterable
+from collections.abc import Iterable
+from dataclasses import asdict, dataclass
 
 import requests
 
@@ -68,15 +68,17 @@ def intake_from_folder(
     for i, p in enumerate(sorted(folder.rglob("*"))):
         if p.suffix.lower() not in _IMAGE_EXTS:
             continue
-        tasks.append(IntakeTask(
-            id=f"img-{i:04d}",
-            prompt=prompt_template,
-            task_text=prompt_template,
-            domain=domain,
-            sensitivity=sensitivity,
-            image_path=str(p.resolve()),
-            source=str(p.name),
-        ))
+        tasks.append(
+            IntakeTask(
+                id=f"img-{i:04d}",
+                prompt=prompt_template,
+                task_text=prompt_template,
+                domain=domain,
+                sensitivity=sensitivity,
+                image_path=str(p.resolve()),
+                source=str(p.name),
+            )
+        )
     return _write_jsonl(tasks, output)
 
 
@@ -104,14 +106,16 @@ def intake_from_text(
             log.warning("Lecture échouée pour %s: %s", p, e)
             continue
         prompt = prompt_template.format(content=content[:8000])
-        tasks.append(IntakeTask(
-            id=f"txt-{i:04d}",
-            prompt=prompt,
-            task_text=prompt,
-            domain=domain,
-            sensitivity=sensitivity,
-            source=str(p.name),
-        ))
+        tasks.append(
+            IntakeTask(
+                id=f"txt-{i:04d}",
+                prompt=prompt,
+                task_text=prompt,
+                domain=domain,
+                sensitivity=sensitivity,
+                source=str(p.name),
+            )
+        )
     return _write_jsonl(tasks, output)
 
 
@@ -132,23 +136,23 @@ def intake_from_csv(
     with csv_path.open("r", encoding="utf-8", newline="") as f:
         reader = csv.DictReader(f)
         if column not in (reader.fieldnames or []):
-            raise ValueError(
-                f"Colonne '{column}' absente. Disponibles : {reader.fieldnames}"
-            )
+            raise ValueError(f"Colonne '{column}' absente. Disponibles : {reader.fieldnames}")
         for i, row in enumerate(reader):
             content = (row.get(column) or "").strip()
             if not content:
                 continue
             task_id = row.get(id_column, f"csv-{i:04d}") if id_column else f"csv-{i:04d}"
             prompt = prompt_template.format(content=content)
-            tasks.append(IntakeTask(
-                id=task_id,
-                prompt=prompt,
-                task_text=prompt,
-                domain=domain,
-                sensitivity=sensitivity,
-                source=f"{csv_path.name}:{i}",
-            ))
+            tasks.append(
+                IntakeTask(
+                    id=task_id,
+                    prompt=prompt,
+                    task_text=prompt,
+                    domain=domain,
+                    sensitivity=sensitivity,
+                    source=f"{csv_path.name}:{i}",
+                )
+            )
     return _write_jsonl(tasks, output)
 
 
@@ -157,6 +161,7 @@ def _check_robots(url: str) -> bool:
     """Vérifie si le path est autorisé par robots.txt. Fail-open si indisponible."""
     try:
         from urllib.parse import urlparse
+
         parsed = urlparse(url)
         robots_url = f"{parsed.scheme}://{parsed.netloc}/robots.txt"
         r = requests.get(robots_url, timeout=5)
@@ -169,7 +174,7 @@ def _check_robots(url: str) -> bool:
                     return False
         return True
     except Exception:
-        return True   # fail-open : on laisse l'utilisateur décider
+        return True  # fail-open : on laisse l'utilisateur décider
 
 
 def intake_from_urls(
@@ -190,7 +195,8 @@ def intake_from_urls(
         raise FileNotFoundError(f"Fichier URLs introuvable : {urls_file}")
 
     urls = [
-        line.strip() for line in urls_file.read_text(encoding="utf-8").splitlines()
+        line.strip()
+        for line in urls_file.read_text(encoding="utf-8").splitlines()
         if line.strip() and not line.startswith("#")
     ]
 
@@ -206,18 +212,21 @@ def intake_from_urls(
             # Extraction basique du texte
             try:
                 from bs4 import BeautifulSoup
+
                 text = BeautifulSoup(r.text, "html.parser").get_text(separator="\n")
             except ImportError:
                 text = r.text
             prompt = prompt_template.format(content=text[:8000])
-            tasks.append(IntakeTask(
-                id=f"url-{i:04d}",
-                prompt=prompt,
-                task_text=prompt,
-                domain=domain,
-                sensitivity=sensitivity,
-                source=url,
-            ))
+            tasks.append(
+                IntakeTask(
+                    id=f"url-{i:04d}",
+                    prompt=prompt,
+                    task_text=prompt,
+                    domain=domain,
+                    sensitivity=sensitivity,
+                    source=url,
+                )
+            )
             time.sleep(delay_seconds)
         except Exception as e:
             log.warning("Échec fetch %s: %s", url, e)

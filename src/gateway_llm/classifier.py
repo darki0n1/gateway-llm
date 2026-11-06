@@ -28,7 +28,7 @@ DOMAINS: tuple[str, ...] = (
     "safety",
     "red_teaming",
     "prompt_creation",
-    "multimodal_extraction",   # ← AJOUT
+    "multimodal_extraction",  # ← AJOUT
 )
 
 _STATUSES = (
@@ -111,8 +111,10 @@ Contexte: {task_desc}
 Réponse:"""
 
         response = provider.complete(
-            model=self._model, prompt=prompt,
-            max_tokens=self._max_tokens, temperature=0.1,
+            model=self._model,
+            prompt=prompt,
+            max_tokens=self._max_tokens,
+            temperature=0.1,
         )
 
         raw = response.text
@@ -143,9 +145,12 @@ Réponse:"""
         priority = max(0, min(10, priority))
 
         return ClassificationResult(
-            domain=domain, status=status, human_priority=priority,
+            domain=domain,
+            status=status,
+            human_priority=priority,
             risk_level=parsed.get("risk_level", "low"),
-            flags=flags, reason=parsed.get("reason", "Classifieur LLM"),
+            flags=flags,
+            reason=parsed.get("reason", "Classifieur LLM"),
         )
 
     def _fallback(self, task_text: str, task_desc: str) -> ClassificationResult:
@@ -154,14 +159,29 @@ Réponse:"""
         priority = 0
 
         # Multimodal (détection d'intention, pas de blocage)
-        is_image = any(re.search(p, text_lower) for p in [
-            r"\bimage\b", r"\bscreenshot\b", r"\bphoto\b",
-            r"\bgraphique\b", r"\btableau\b", r"\bcapture\b",
-        ])
-        wants_extract = any(re.search(p, text_lower) for p in [
-            r"\bextrait", r"\blis\b", r"\banalyse", r"\bkpi\b",
-            r"\bchiffre", r"\bdonnée", r"\brésume",
-        ])
+        is_image = any(
+            re.search(p, text_lower)
+            for p in [
+                r"\bimage\b",
+                r"\bscreenshot\b",
+                r"\bphoto\b",
+                r"\bgraphique\b",
+                r"\btableau\b",
+                r"\bcapture\b",
+            ]
+        )
+        wants_extract = any(
+            re.search(p, text_lower)
+            for p in [
+                r"\bextrait",
+                r"\blis\b",
+                r"\banalyse",
+                r"\bkpi\b",
+                r"\bchiffre",
+                r"\bdonnée",
+                r"\brésume",
+            ]
+        )
 
         if is_image and wants_extract:
             # Court-circuite les autres flags : c'est du multimodal
@@ -175,26 +195,45 @@ Réponse:"""
             )
 
         # Post-2024
-        if any(re.search(p, text_lower) for p in [
-            r"\b202[5-9]\b", r"\bactuellement\b", r"\baujourd'hui\b",
-        ]):
+        if any(
+            re.search(p, text_lower)
+            for p in [
+                r"\b202[5-9]\b",
+                r"\bactuellement\b",
+                r"\baujourd'hui\b",
+            ]
+        ):
             flags.append("POST_2024_FACT_CHECK")
             priority = max(priority, 8)
 
         # High risk
-        if any(re.search(p, text_lower) for p in [
-            r"\bsécurité\b", r"\bdanger\b", r"\brisqu(e|es)\b",
-            r"\binjection\b", r"\bsecret\b", r"\bmot de passe\b",
-            r"\bclé api\b", r"\bpirater\b", r"\bvulnérabilité\b",
-        ]):
+        if any(
+            re.search(p, text_lower)
+            for p in [
+                r"\bsécurité\b",
+                r"\bdanger\b",
+                r"\brisqu(e|es)\b",
+                r"\binjection\b",
+                r"\bsecret\b",
+                r"\bmot de passe\b",
+                r"\bclé api\b",
+                r"\bpirater\b",
+                r"\bvulnérabilité\b",
+            ]
+        ):
             flags.append("HIGH_RISK")
             priority = max(priority, 10)
 
         # Subjectif
-        if any(re.search(p, text_lower) for p in [
-            r"\bquelle formulation\b", r"\bplus professionnel",
-            r"\bnot(er|ez|ion)\b", r"\béval(u|ue)er\b",
-        ]):
+        if any(
+            re.search(p, text_lower)
+            for p in [
+                r"\bquelle formulation\b",
+                r"\bplus professionnel",
+                r"\bnot(er|ez|ion)\b",
+                r"\béval(u|ue)er\b",
+            ]
+        ):
             flags.append("SUBJECTIVE_NORMAL")
             priority = max(priority, 7)
 
@@ -214,9 +253,9 @@ Réponse:"""
             domain = "safety"
         elif any(w in text_lower for w in ["vérifi", "fact", "affirmation", "véracité"]):
             domain = "fact_checking"
-        elif any(w in text_lower for w in ["traduc"]):
-            domain = "translation"
-        elif any(w in text_lower for w in ["français", "francais"]):
+        elif any(w in text_lower for w in ["traduc"]) or any(
+            w in text_lower for w in ["français", "francais"]
+        ):
             domain = "translation"
         elif any(w in text_lower for w in ["résoudre", "resoudre", "problème", "probleme"]):
             domain = "problem_solving"
@@ -226,7 +265,10 @@ Réponse:"""
             domain = "prompt_creation"
 
         return ClassificationResult(
-            domain=domain, status=status, human_priority=priority,
+            domain=domain,
+            status=status,
+            human_priority=priority,
             risk_level=("high" if priority >= 7 else "medium" if priority >= 4 else "low"),
-            flags=flags, reason="Fallback regex",
+            flags=flags,
+            reason="Fallback regex",
         )

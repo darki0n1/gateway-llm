@@ -47,7 +47,7 @@ def configure(
         },
         "json": {
             "format": '{"ts":"%(asctime)s","level":"%(levelname)s",'
-                      '"logger":"%(name)s","msg":"%(message)s"}',
+            '"logger":"%(name)s","msg":"%(message)s"}',
             "datefmt": "%Y-%m-%dT%H:%M:%S",
         },
     }

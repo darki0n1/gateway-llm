@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import logging
 
-from .base import BenchmarkResult, BenchmarkSource, TaskCategory
+from .base import BenchmarkSource, TaskCategory
 from .cache import BenchmarkCache
 
 log = logging.getLogger(__name__)
@@ -34,9 +34,7 @@ class BenchmarkAggregator:
         for src in self._sources:
             if not src.supports(category):
                 continue
-            cached = None if self._force else self._cache.get(
-                src.name, category.value
-            )
+            cached = None if self._force else self._cache.get(src.name, category.value)
             results = cached
             if results is None:
                 results = src.fetch(category)
@@ -45,10 +43,7 @@ class BenchmarkAggregator:
             for r in results:
                 accumulated.setdefault(r.model_key, []).append(r.score)
 
-        return {
-            model: sum(v) / len(v)
-            for model, v in accumulated.items()
-        }
+        return {model: sum(v) / len(v) for model, v in accumulated.items()}
 
     def rank_chain(
         self,
@@ -67,8 +62,9 @@ class BenchmarkAggregator:
             s = scores.get(model_key)
             if s is None:
                 without.append(model_key)
-                log.warning("Aucun score benchmark pour %s (%s), gardé en fin",
-                            model_key, category.value)
+                log.warning(
+                    "Aucun score benchmark pour %s (%s), gardé en fin", model_key, category.value
+                )
             else:
                 with_score.append((model_key, s))
         with_score.sort(key=lambda x: x[1], reverse=True)

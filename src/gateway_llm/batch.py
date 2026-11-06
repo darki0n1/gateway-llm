@@ -118,7 +118,7 @@ class BatchRunner:
         Contrôlé par la variable d'environnement gateway_llm_BENCHMARK_TTL_DAYS
         (défaut: 14). Non bloquant : une erreur réseau est un simple warning.
         """
-        ttl_days = int(os.environ.get("gateway_llm_BENCHMARK_TTL_DAYS", "14"))
+        ttl_days = int(os.environ.get("GATEWAY_LLM_BENCHMARK_TTL_DAYS", "14"))
         cache_dir = pathlib.Path("benchmarks_cache")
 
         if cache_dir.exists():
@@ -165,7 +165,9 @@ class BatchRunner:
         for name, pcfg in self._cfg.providers.items():
             if pcfg.type == "ollama":
                 providers[name] = OllamaProvider(
-                    name=name, base_url=pcfg.base_url, timeout=pcfg.timeout,
+                    name=name,
+                    base_url=pcfg.base_url,
+                    timeout=pcfg.timeout,
                 )
                 continue
 
@@ -176,20 +178,27 @@ class BatchRunner:
 
             if pcfg.type == "openai_compat":
                 providers[name] = OpenAICompatibleProvider(
-                    name=name, base_url=pcfg.base_url, secret=api_key or "",
-                    extra_headers=pcfg.extra_headers, timeout=pcfg.timeout,
+                    name=name,
+                    base_url=pcfg.base_url,
+                    secret=api_key or "",
+                    extra_headers=pcfg.extra_headers,
+                    timeout=pcfg.timeout,
                 )
             elif pcfg.type == "cloudflare":
                 account_id = (
                     self._secrets.get(pcfg.account_secret_name)
-                    if pcfg.account_secret_name else None
+                    if pcfg.account_secret_name
+                    else None
                 )
                 if not account_id:
                     log.warning("Cloudflare '%s' sans account_id, ignoré", name)
                     continue
                 providers[name] = CloudflareProvider(
-                    name=name, base_url=pcfg.base_url, api_key=api_key or "",
-                    account_id=account_id, timeout=pcfg.timeout,
+                    name=name,
+                    base_url=pcfg.base_url,
+                    api_key=api_key or "",
+                    account_id=account_id,
+                    timeout=pcfg.timeout,
                 )
         return providers
 
@@ -197,7 +206,8 @@ class BatchRunner:
     # Construction du classifieur
     # ────────────────────────────────────────────────────────────
     def _build_classifier(
-        self, providers: dict[str, Provider],
+        self,
+        providers: dict[str, Provider],
     ) -> TaskClassifier | None:
         if self._disable_classifier:
             log.info("Classification automatique désactivée")
@@ -249,9 +259,7 @@ class BatchRunner:
             return BatchStats()
 
         in_tokens = sum(
-            self._estimate_tokens(
-                t.get("prompt", "") + " " + t.get("task_text", "")
-            )
+            self._estimate_tokens(t.get("prompt", "") + " " + t.get("task_text", ""))
             for t in samples
         )
         out_tokens = 400 * len(samples)
@@ -283,8 +291,7 @@ class BatchRunner:
             raise RuntimeError("Aucun provider disponible (secrets ?)")
 
         budget = (
-            BudgetTracker(max_eur=self._max_cost_eur)
-            if self._max_cost_eur is not None else None
+            BudgetTracker(max_eur=self._max_cost_eur) if self._max_cost_eur is not None else None
         )
         router = Router(
             config=self._cfg,
@@ -321,13 +328,16 @@ class BatchRunner:
             if domain is None:
                 if classifier is not None:
                     classification = classifier.classify(
-                        text, task.get("description", ""),
+                        text,
+                        task.get("description", ""),
                     )
                     domain = classification.domain
                     stats.classified += 1
                     log.info(
                         "[%s] classifié: domain=%s status=%s prio=%d",
-                        task_id, classification.domain, classification.status,
+                        task_id,
+                        classification.domain,
+                        classification.status,
                         classification.human_priority,
                     )
                 else:
@@ -369,14 +379,17 @@ class BatchRunner:
                 stats.per_domain[domain] = stats.per_domain.get(domain, 0) + 1
                 log.info(
                     "[%s] → human_review (priorité %d)",
-                    task_id, classification.human_priority,
+                    task_id,
+                    classification.human_priority,
                 )
                 continue
 
             # 3) Préparation éventuelle de l'image
             log.info(
                 "[%s] route domain=%s sensitivity=%s",
-                task_id, domain, sensitivity,
+                task_id,
+                domain,
+                sensitivity,
             )
             image_b64: str | None = None
             image_ref = task.get("image_path") or task.get("image_b64")
@@ -386,12 +399,12 @@ class BatchRunner:
                 else:
                     img_path = pathlib.Path(image_ref)
                     if img_path.exists():
-                        image_b64 = base64.b64encode(
-                            img_path.read_bytes()
-                        ).decode("ascii")
+                        image_b64 = base64.b64encode(img_path.read_bytes()).decode("ascii")
                     else:
                         log.warning(
-                            "[%s] image_path introuvable: %s", task_id, image_ref,
+                            "[%s] image_path introuvable: %s",
+                            task_id,
+                            image_ref,
                         )
 
             # 4) Routage (router.route doit accepter image_b64)
@@ -406,9 +419,7 @@ class BatchRunner:
             if result.success:
                 status = "approved"
                 stats.approved += 1
-                stats.per_model[result.model_used] = (
-                    stats.per_model.get(result.model_used, 0) + 1
-                )
+                stats.per_model[result.model_used] = stats.per_model.get(result.model_used, 0) + 1
             elif result.budget_exceeded:
                 status = "budget_exceeded"
                 stats.budget_exceeded_tasks += 1

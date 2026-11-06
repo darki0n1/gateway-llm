@@ -34,14 +34,11 @@ class NemoGuardrail(Guardrail):
             from nemoguardrails import LLMRails, RailsConfig
         except ImportError as e:
             raise RuntimeError(
-                "NeMo Guardrails non installé. "
-                "Lance `pip install gateway-llm[guardrails]`."
+                "NeMo Guardrails non installé. Lance `pip install gateway-llm[guardrails]`."
             ) from e
 
         if not self._config_path.exists():
-            raise FileNotFoundError(
-                f"Dossier guardrails introuvable : {self._config_path}"
-            )
+            raise FileNotFoundError(f"Dossier guardrails introuvable : {self._config_path}")
         cfg = RailsConfig.from_path(str(self._config_path))
         self._app = LLMRails(cfg)
         log.info("NeMo Guardrails initialisé depuis %s", self._config_path)
@@ -55,7 +52,8 @@ class NemoGuardrail(Guardrail):
             v = raw.get("response", "")
             if isinstance(v, list):
                 return "\n".join(
-                    m.get("content", "") for m in v
+                    m.get("content", "")
+                    for m in v
                     if isinstance(m, dict) and m.get("role") == "assistant"
                 )
             return str(v)
@@ -63,7 +61,8 @@ class NemoGuardrail(Guardrail):
         v = getattr(raw, "response", "")
         if isinstance(v, list):
             return "\n".join(
-                m.get("content", "") for m in v
+                m.get("content", "")
+                for m in v
                 if isinstance(m, dict) and m.get("role") == "assistant"
             )
         return str(v)

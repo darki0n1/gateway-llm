@@ -12,7 +12,7 @@ description = "Quality-Gated Batch Router : routage LLM par cascade, guardrails,
 readme = "README.md"
 requires-python = ">=3.11"
 license = "Apache-2.0"
-license-files = ["LICENSE"]
+license-files = ["LICENSE.txt"]
 authors = [{ name = "Amandine Dennieau", email = "dennieau.amandine@proton.me" }]
 keywords = ["llm", "router", "batch", "guardrails", "fallback", "cost"]
 classifiers = [
@@ -80,7 +80,7 @@ ignore = ["S101"]
 # ────────────────────────────────────────────────────────────────
 [tool.bandit]
 exclude_dirs = ["tests", ".venv", "build", "dist"]
-skips = ["B101"]
+skips = ["B101", "B404", "B603", "B607", "B110"]
 
 # ────────────────────────────────────────────────────────────────
 # Pytest

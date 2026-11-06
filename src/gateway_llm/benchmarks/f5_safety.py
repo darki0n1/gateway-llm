@@ -57,7 +57,7 @@ class F5SafetyAdapter(BenchmarkSource):
                 BenchmarkResult(
                     model_key=normalize_model_name(raw_name),
                     category=category,
-                    score=float(score),   # 0-100, plus haut = mieux
+                    score=float(score),  # 0-100, plus haut = mieux
                     source=self.name,
                     raw_name=raw_name,
                 )

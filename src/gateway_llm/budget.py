@@ -48,7 +48,9 @@ class BudgetTracker:
             self._calls += 1
         if self._max is not None and self._spent > self._max:
             log.warning(
-                "Budget dépassé : %.4f € > %.4f €", self._spent, self._max,
+                "Budget dépassé : %.4f € > %.4f €",
+                self._spent,
+                self._max,
             )
 
     def can_escalate(self, estimated_next_cost: float = 0.0) -> bool:
@@ -70,9 +72,7 @@ class BudgetTracker:
                 spent_eur=self._spent,
                 max_eur=self._max,
                 calls=self._calls,
-                exceeded=(
-                    self._max is not None and self._spent > self._max
-                ),
+                exceeded=(self._max is not None and self._spent > self._max),
             )
 
     def reset(self) -> None:

@@ -30,10 +30,10 @@ def test_cooldown_expires():
         q.record_rate_limit("groq")
         assert not q.is_available("groq")
 
-        mock_time.return_value = 150.0    # 50s plus tard, encore en cooldown
+        mock_time.return_value = 150.0  # 50s plus tard, encore en cooldown
         assert not q.is_available("groq")
 
-        mock_time.return_value = 200.0    # 100s plus tard, expiré
+        mock_time.return_value = 200.0  # 100s plus tard, expiré
         assert q.is_available("groq")
         assert q.cooldown_remaining("groq") == 0.0
 
@@ -51,10 +51,10 @@ def test_429_consecutive_does_not_permanently_ban():
         mock_time.return_value = 100.0
         q = QuotaManager(cooldown_seconds=60)
         q.record_rate_limit("groq")
-        q.record_rate_limit("groq")   # 2e 429 ne change rien
+        q.record_rate_limit("groq")  # 2e 429 ne change rien
 
         mock_time.return_value = 200.0
-        assert q.is_available("groq")   # expiré → redevient dispo
+        assert q.is_available("groq")  # expiré → redevient dispo
 
 
 def test_reset_clears_cooldowns():
@@ -68,11 +68,14 @@ def test_reset_clears_cooldowns():
 
 def test_thread_safety():
     import threading
+
     q = QuotaManager(cooldown_seconds=60)
+
     def worker():
         for _ in range(100):
             q.record_rate_limit("groq")
             q.is_available("groq")
+
     threads = [threading.Thread(target=worker) for _ in range(4)]
     for t in threads:
         t.start()

@@ -10,8 +10,8 @@ from unittest.mock import MagicMock
 import pytest
 
 from gateway_llm.guardrails.base import Guardrail, GuardrailResult
-from gateway_llm.guardrails.noop import NoOpGuardrail
 from gateway_llm.guardrails.nemo import NemoGuardrail
+from gateway_llm.guardrails.noop import NoOpGuardrail
 
 
 # ─── Interface ─────────────────────────────────────────────────
@@ -49,6 +49,7 @@ def test_nemo_missing_config_raises():
 def test_nemo_missing_dependency_fails_open(monkeypatch):
     """Si nemoguardrails n'est pas installé, check() fail-open."""
     import sys
+
     # Force l'échec de l'import
     monkeypatch.setitem(sys.modules, "nemoguardrails", None)
 
@@ -88,32 +89,35 @@ def test_nemo_str_not_supported():
 
 
 def test_nemo_dict_response():
-    g = _make_nemo_with_mock_app({
-        "response": [
-            {"role": "assistant", "content": "Cette réponse est correcte"},
-        ],
-    })
+    g = _make_nemo_with_mock_app(
+        {
+            "response": [
+                {"role": "assistant", "content": "Cette réponse est correcte"},
+            ],
+        }
+    )
     assert g.check("task", "response").is_valid is True
 
 
 def test_nemo_dict_hallucination():
-    g = _make_nemo_with_mock_app({
-        "response": [
-            {"role": "assistant", "content": "hallucination suspectée"},
-        ],
-    })
+    g = _make_nemo_with_mock_app(
+        {
+            "response": [
+                {"role": "assistant", "content": "hallucination suspectée"},
+            ],
+        }
+    )
     assert g.check("task", "response").is_valid is False
 
 
 def test_nemo_object_response():
     """Simule un GenerationResponse avec attribut .response."""
+
     class FakeGenResponse:
         def __init__(self, msgs):
             self.response = msgs
 
-    g = _make_nemo_with_mock_app(
-        FakeGenResponse([{"role": "assistant", "content": "ok"}])
-    )
+    g = _make_nemo_with_mock_app(FakeGenResponse([{"role": "assistant", "content": "ok"}]))
     assert g.check("task", "response").is_valid is True
 
 

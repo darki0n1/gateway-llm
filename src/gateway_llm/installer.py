@@ -40,9 +40,7 @@ class Installer:
 
     def pull_model(self, name: str) -> bool:
         if not shutil.which("ollama"):
-            log.error(
-                "Ollama introuvable. Installer depuis https://ollama.com/download"
-            )
+            log.error("Ollama introuvable. Installer depuis https://ollama.com/download")
             return False
 
         if not self._ask(f"Télécharger le modèle '{name}' ?"):

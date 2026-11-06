@@ -15,11 +15,14 @@ def test_pull_success(mock_get, mock_popen, _which):
     # Simule la sortie de `ollama pull`
     mock_stdout = iter(["pulling...\n", "done\n"])
     mock_proc = MagicMock(
-        stdout=mock_stdout, returncode=0, wait=MagicMock(),
+        stdout=mock_stdout,
+        returncode=0,
+        wait=MagicMock(),
     )
     mock_popen.return_value = mock_proc
     mock_get.return_value = MagicMock(
-        status_code=200, json=lambda: {"models": [{"name": "qwen3:4b"}]},
+        status_code=200,
+        json=lambda: {"models": [{"name": "qwen3:4b"}]},
     )
     inst = Installer(assume_yes=True)
     assert inst.pull_model("qwen3:4b")
@@ -30,7 +33,9 @@ def test_pull_success(mock_get, mock_popen, _which):
 @patch("gateway_llm.installer.requests.get")
 def test_pull_failure(mock_get, mock_popen, _which):
     mock_proc = MagicMock(
-        stdout=iter([]), returncode=1, wait=MagicMock(),
+        stdout=iter([]),
+        returncode=1,
+        wait=MagicMock(),
     )
     mock_popen.return_value = mock_proc
     inst = Installer(assume_yes=True)
@@ -62,6 +67,7 @@ def test_ensure_models_no_missing(mock_get):
     )
     inst = Installer(assume_yes=True)
     assert inst.ensure_models(["qwen3:4b", "qwen3:8b"]) == 0
+
 
 @patch("gateway_llm.installer.shutil.which", return_value="/usr/bin/ollama")
 @patch("gateway_llm.installer.subprocess.Popen")

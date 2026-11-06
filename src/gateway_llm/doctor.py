@@ -90,18 +90,22 @@ class Doctor:
     def _check_python(self, report: DoctorReport) -> None:
         missing = [m for m in _REQUIRED_PY if not self._import_ok(m)]
         if missing:
-            report.add(CheckResult(
-                name="Python (dépendances)",
-                severity=Severity.ERROR,
-                message=f"Manquants : {', '.join(missing)}",
-                hint="pip install --upgrade gateway-llm",
-            ))
+            report.add(
+                CheckResult(
+                    name="Python (dépendances)",
+                    severity=Severity.ERROR,
+                    message=f"Manquants : {', '.join(missing)}",
+                    hint="pip install --upgrade gateway-llm",
+                )
+            )
         else:
-            report.add(CheckResult(
-                name="Python (dépendances)",
-                severity=Severity.OK,
-                message=f"{len(_REQUIRED_PY)} packages importables",
-            ))
+            report.add(
+                CheckResult(
+                    name="Python (dépendances)",
+                    severity=Severity.OK,
+                    message=f"{len(_REQUIRED_PY)} packages importables",
+                )
+            )
 
     @staticmethod
     def _import_ok(mod: str) -> bool:
@@ -116,102 +120,124 @@ class Doctor:
         try:
             from gateway_llm.secrets import _load_config, get_backend
         except Exception as e:
-            report.add(CheckResult(
-                name="Stockage des secrets",
-                severity=Severity.WARNING,
-                message=f"Impossible de vérifier : {e}",
-            ))
+            report.add(
+                CheckResult(
+                    name="Stockage des secrets",
+                    severity=Severity.WARNING,
+                    message=f"Impossible de vérifier : {e}",
+                )
+            )
             return
 
         # Avertit si un fichier .env traîne (peu importe le backend configuré)
         if pathlib.Path(".env").exists():
-            report.add(CheckResult(
-                name="Stockage des secrets",
-                severity=Severity.WARNING,
-                message="Fichier .env détecté (non chiffré)",
-                hint=(
-                    "Un .env est lisible par tout processus de l'utilisateur. "
-                    "Supprimez-le et configurez un coffre-fort : "
-                    "gateway-llm setup-secrets"
-                ),
-            ))
+            report.add(
+                CheckResult(
+                    name="Stockage des secrets",
+                    severity=Severity.WARNING,
+                    message="Fichier .env détecté (non chiffré)",
+                    hint=(
+                        "Un .env est lisible par tout processus de l'utilisateur. "
+                        "Supprimez-le et configurez un coffre-fort : "
+                        "gateway-llm setup-secrets"
+                    ),
+                )
+            )
             return
 
         cfg = _load_config()
         if cfg is None or "backend" not in cfg:
-            report.add(CheckResult(
-                name="Stockage des secrets",
-                severity=Severity.WARNING,
-                message="Aucun backend configuré",
-                hint="Lancez : gateway-llm setup-secrets",
-            ))
+            report.add(
+                CheckResult(
+                    name="Stockage des secrets",
+                    severity=Severity.WARNING,
+                    message="Aucun backend configuré",
+                    hint="Lancez : gateway-llm setup-secrets",
+                )
+            )
             return
 
         backend_name = cfg.get("backend", "?")
         try:
             backend = get_backend()
             if backend.is_available():
-                report.add(CheckResult(
-                    name="Stockage des secrets",
-                    severity=Severity.OK,
-                    message=f"Backend '{backend_name}' opérationnel",
-                ))
+                report.add(
+                    CheckResult(
+                        name="Stockage des secrets",
+                        severity=Severity.OK,
+                        message=f"Backend '{backend_name}' opérationnel",
+                    )
+                )
             else:
-                report.add(CheckResult(
+                report.add(
+                    CheckResult(
+                        name="Stockage des secrets",
+                        severity=Severity.WARNING,
+                        message=f"Backend '{backend_name}' configuré mais indisponible",
+                        hint="Vérifiez la connexion au vault et vos credentials",
+                    )
+                )
+        except Exception as e:
+            report.add(
+                CheckResult(
                     name="Stockage des secrets",
                     severity=Severity.WARNING,
-                    message=f"Backend '{backend_name}' configuré mais indisponible",
-                    hint="Vérifiez la connexion au vault et vos credentials",
-                ))
-        except Exception as e:
-            report.add(CheckResult(
-                name="Stockage des secrets",
-                severity=Severity.WARNING,
-                message=f"Backend '{backend_name}' en erreur",
-                hint=str(e)[:120],
-            ))
+                    message=f"Backend '{backend_name}' en erreur",
+                    hint=str(e)[:120],
+                )
+            )
 
     def _check_ollama_binary(self, report: DoctorReport) -> bool:
         path = shutil.which("ollama")
         if not path:
-            report.add(CheckResult(
-                name="Ollama (binaire)",
-                severity=Severity.WARNING,
-                message="Introuvable dans le PATH",
-                hint="Installer depuis https://ollama.com/download",
-            ))
+            report.add(
+                CheckResult(
+                    name="Ollama (binaire)",
+                    severity=Severity.WARNING,
+                    message="Introuvable dans le PATH",
+                    hint="Installer depuis https://ollama.com/download",
+                )
+            )
             return False
-        report.add(CheckResult(
-            name="Ollama (binaire)",
-            severity=Severity.OK,
-            message=f"Trouvé ({path})",
-        ))
+        report.add(
+            CheckResult(
+                name="Ollama (binaire)",
+                severity=Severity.OK,
+                message=f"Trouvé ({path})",
+            )
+        )
         return True
 
     def _check_ollama_daemon(self, report: DoctorReport) -> bool:
         try:
             r = requests.get(f"{self._ollama_url}/api/tags", timeout=2)
             if r.status_code == 200:
-                report.add(CheckResult(
-                    name="Ollama (daemon)",
-                    severity=Severity.OK,
-                    message=f"Répond sur {self._ollama_url}",
-                ))
+                report.add(
+                    CheckResult(
+                        name="Ollama (daemon)",
+                        severity=Severity.OK,
+                        message=f"Répond sur {self._ollama_url}",
+                    )
+                )
                 return True
-            report.add(CheckResult(
-                name="Ollama (daemon)",
-                severity=Severity.WARNING,
-                message=f"Répond HTTP {r.status_code}",
-                hint="Vérifier avec : ollama serve",
-            ))
+            report.add(
+                CheckResult(
+                    name="Ollama (daemon)",
+                    severity=Severity.WARNING,
+                    message=f"Répond HTTP {r.status_code}",
+                    hint="Vérifier avec : ollama serve",
+                )
+            )
             return False
         except requests.exceptions.RequestException:
-            report.add(CheckResult(
-                name="Ollama (daemon)",
-                severity=Severity.WARNING,
-                message=f"Injoignable sur {self._ollama_url}",
-                hint="Lancer : ollama serve",
-            ))
+            report.add(
+                CheckResult(
+                    name="Ollama (daemon)",
+                    severity=Severity.WARNING,
+                    message=f"Injoignable sur {self._ollama_url}",
+                    hint="Lancer : ollama serve",
+                )
+            )
             return False
 
     def _list_local_models(self) -> set[str]:
@@ -227,15 +253,19 @@ class Doctor:
         missing = [m for m in self._required_models if m not in installed]
         report.missing_models = missing
         if missing:
-            report.add(CheckResult(
-                name="Modèles Ollama",
-                severity=Severity.WARNING,
-                message=f"{len(missing)} manquant(s) : {', '.join(missing)}",
-                hint="Lancer : gateway-llm setup",
-            ))
+            report.add(
+                CheckResult(
+                    name="Modèles Ollama",
+                    severity=Severity.WARNING,
+                    message=f"{len(missing)} manquant(s) : {', '.join(missing)}",
+                    hint="Lancer : gateway-llm setup",
+                )
+            )
         else:
-            report.add(CheckResult(
-                name="Modèles Ollama",
-                severity=Severity.OK,
-                message=f"{len(self._required_models)} modèle(s) installé(s)",
-            ))
+            report.add(
+                CheckResult(
+                    name="Modèles Ollama",
+                    severity=Severity.OK,
+                    message=f"{len(self._required_models)} modèle(s) installé(s)",
+                )
+            )

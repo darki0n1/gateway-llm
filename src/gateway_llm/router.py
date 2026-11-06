@@ -84,14 +84,17 @@ class Router:
     ) -> RoutingResult:
         if domain not in self._config.domains:
             return RoutingResult(
-                success=False, domain=domain,
+                success=False,
+                domain=domain,
                 errors=[f"domaine inconnu : {domain}"],
             )
 
         # Budget global déjà dépassé : on n'essaie même pas
         if self._budget is not None and self._budget.exceeded():
             return RoutingResult(
-                success=False, domain=domain, budget_exceeded=True,
+                success=False,
+                domain=domain,
+                budget_exceeded=True,
                 errors=["budget dépassé, cascade annulée"],
             )
 
@@ -134,14 +137,15 @@ class Router:
                 if fit.category in ("slow", "very_slow"):
                     log.warning(
                         "Modèle local %s : %s (ratio %.1fx)",
-                        model_key, fit.note, fit.ratio or 0.0,
+                        model_key,
+                        fit.note,
+                        fit.ratio or 0.0,
                     )
                 elif fit.category == "acceptable":
                     log.info("Modèle local %s : %s", model_key, fit.note)
                 if self._hardware.should_skip(model_cfg.size_gb):
                     errors.append(
-                        f"{model_key}: skip hardware "
-                        f"(seuil {self._hardware.skip_threshold}x)"
+                        f"{model_key}: skip hardware (seuil {self._hardware.skip_threshold}x)"
                     )
                     continue
 
@@ -154,7 +158,10 @@ class Router:
             real_model = self._config.resolve_model_name(model_key)
             log.info(
                 "route domain=%s model=%s provider=%s escalation=%d",
-                domain, model_key, provider_name, escalations,
+                domain,
+                model_key,
+                provider_name,
+                escalations,
             )
 
             try:
@@ -205,7 +212,9 @@ class Router:
             # Guardrail fail : fin de chaîne, on renvoie la réponse
             # pour que l'appelant décide (human_review dans BatchRunner)
             log.warning(
-                "guardrail reject model=%s reason=%s", model_key, gr.reason,
+                "guardrail reject model=%s reason=%s",
+                model_key,
+                gr.reason,
             )
             return RoutingResult(
                 success=False,

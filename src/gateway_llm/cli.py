@@ -127,6 +127,7 @@ def cmd_setup(args: argparse.Namespace) -> int:
     print(f"\n✅ {n} modèle(s) installé(s) sur {len(report.missing_models)}.")
     return 0
 
+
 def cmd_setup_secrets(args: argparse.Namespace) -> int:
     from gateway_llm.secrets import get_backend, save_backend_config
 
@@ -151,13 +152,13 @@ def cmd_setup_secrets(args: argparse.Namespace) -> int:
             print("\nInstructions PowerShell (à lancer une fois dans un terminal) :")
             print("  Install-Module Microsoft.PowerShell.SecretManagement -Scope CurrentUser")
             print("  Install-Module Microsoft.PowerShell.SecretStore -Scope CurrentUser")
-            print("  Register-SecretVault -Name LocalVault "
-                  "-ModuleName Microsoft.PowerShell.SecretStore -DefaultVault")
+            print(
+                "  Register-SecretVault -Name LocalVault "
+                "-ModuleName Microsoft.PowerShell.SecretStore -DefaultVault"
+            )
         elif sub == "b":
             backend = "1password"
-            vault = input(
-                "Nom du vault 1Password (défaut: Private) : "
-            ).strip() or "Private"
+            vault = input("Nom du vault 1Password (défaut: Private) : ").strip() or "Private"
             options = {"vault": vault}
         else:
             print("❌ Choix invalide.")
@@ -180,12 +181,8 @@ def cmd_setup_secrets(args: argparse.Namespace) -> int:
         elif sub == "b":
             backend = "aws_secrets_manager"
             options = {
-                "region": input(
-                    "Région AWS (défaut: us-east-1) : "
-                ).strip() or "us-east-1",
-                "prefix": input(
-                    "Préfixe (défaut: gateway-llm/) : "
-                ).strip() or "gateway-llm/",
+                "region": input("Région AWS (défaut: us-east-1) : ").strip() or "us-east-1",
+                "prefix": input("Préfixe (défaut: gateway-llm/) : ").strip() or "gateway-llm/",
             }
         elif sub == "c":
             backend = "azure_key_vault"
@@ -203,12 +200,8 @@ def cmd_setup_secrets(args: argparse.Namespace) -> int:
         if sub == "a":
             backend = "aws_secrets_manager"
             options = {
-                "region": input(
-                    "Région AWS (défaut: us-east-1) : "
-                ).strip() or "us-east-1",
-                "prefix": input(
-                    "Préfixe (défaut: gateway-llm/) : "
-                ).strip() or "gateway-llm/",
+                "region": input("Région AWS (défaut: us-east-1) : ").strip() or "us-east-1",
+                "prefix": input("Préfixe (défaut: gateway-llm/) : ").strip() or "gateway-llm/",
             }
         elif sub == "b":
             backend = "azure_key_vault"
@@ -259,9 +252,13 @@ def cmd_setup_secrets(args: argparse.Namespace) -> int:
         print("\nSaisie des clés API (laisser vide pour ignorer) :")
         setter = getattr(b, "set", None)
         for key in [
-            "GROQ_API_KEY", "MISTRAL_API_KEY", "OPENROUTER_API_KEY",
-            "GOOGLE_API_KEY", "NVIDIA_API_KEY",
-            "CLOUDFLARE_API_KEY", "CLOUDFLARE_ACCOUNT_ID",
+            "GROQ_API_KEY",
+            "MISTRAL_API_KEY",
+            "OPENROUTER_API_KEY",
+            "GOOGLE_API_KEY",
+            "NVIDIA_API_KEY",
+            "CLOUDFLARE_API_KEY",
+            "CLOUDFLARE_ACCOUNT_ID",
         ]:
             val = input(f"  {key} : ").strip()
             if not val:
@@ -286,6 +283,7 @@ def cmd_setup_secrets(args: argparse.Namespace) -> int:
     print("\n✅ Configuration terminée.")
     return 0
 
+
 def cmd_benchmarks_refresh(args: argparse.Namespace) -> int:
     configure_logging(level="INFO")
     agg = _build_aggregator(force=True)
@@ -301,26 +299,33 @@ def cmd_intake(args: argparse.Namespace) -> int:
 
     if args.intake_cmd == "from-folder":
         n = m.intake_from_folder(
-            pathlib.Path(args.path), pathlib.Path(args.output),
-            prompt_template=args.prompt, domain=args.domain,
+            pathlib.Path(args.path),
+            pathlib.Path(args.output),
+            prompt_template=args.prompt,
+            domain=args.domain,
             sensitivity=args.sensitivity,
         )
     elif args.intake_cmd == "from-text":
         n = m.intake_from_text(
-            pathlib.Path(args.path), pathlib.Path(args.output),
-            prompt_template=args.prompt, domain=args.domain,
+            pathlib.Path(args.path),
+            pathlib.Path(args.output),
+            prompt_template=args.prompt,
+            domain=args.domain,
             sensitivity=args.sensitivity,
         )
     elif args.intake_cmd == "from-csv":
         n = m.intake_from_csv(
-            pathlib.Path(args.path), pathlib.Path(args.output),
-            column=args.column, id_column=args.id_column,
+            pathlib.Path(args.path),
+            pathlib.Path(args.output),
+            column=args.column,
+            id_column=args.id_column,
             prompt_template=args.prompt,
             sensitivity=args.sensitivity,
         )
     else:
         n = m.intake_from_urls(
-            pathlib.Path(args.path), pathlib.Path(args.output),
+            pathlib.Path(args.path),
+            pathlib.Path(args.output),
             prompt_template=args.prompt,
             sensitivity=args.sensitivity,
             respect_robots=not args.no_robots,
@@ -355,6 +360,7 @@ def cmd_batch_run(args: argparse.Namespace) -> int:
     classifier: TaskClassifier | None = None
 
     from gateway_llm.batch import BatchRunner
+
     runner = BatchRunner(
         config=cfg,
         policy=policy,
@@ -495,7 +501,9 @@ def _make_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p.add_argument(
-        "--version", action="version", version=f"%(prog)s {__version__}",
+        "--version",
+        action="version",
+        version=f"%(prog)s {__version__}",
     )
     sub = p.add_subparsers(dest="cmd", required=True, metavar="<command>")
 
@@ -510,8 +518,7 @@ def _make_parser() -> argparse.ArgumentParser:
         epilog=_epilog_for("doctor"),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    d.add_argument("--config", default=None,
-                   help="Config YAML pour découvrir les modèles requis")
+    d.add_argument("--config", default=None, help="Config YAML pour découvrir les modèles requis")
     d.set_defaults(func=cmd_doctor)
 
     # ─── setup ─────────────────────────────────────────────────
@@ -525,10 +532,8 @@ def _make_parser() -> argparse.ArgumentParser:
         epilog=_epilog_for("setup"),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    s.add_argument("--config", required=True,
-                   help="Config YAML des providers/modèles")
-    s.add_argument("--yes", "-y", action="store_true",
-                   help="Auto-confirme chaque installation")
+    s.add_argument("--config", required=True, help="Config YAML des providers/modèles")
+    s.add_argument("--yes", "-y", action="store_true", help="Auto-confirme chaque installation")
     s.set_defaults(func=cmd_setup)
 
     # ─── intake ────────────────────────────────────────────────
@@ -541,8 +546,7 @@ def _make_parser() -> argparse.ArgumentParser:
     )
     i_sub = i.add_subparsers(dest="intake_cmd", required=True, metavar="<source>")
 
-    f = i_sub.add_parser("from-folder",
-                         help="Dossier d'images (récursif)")
+    f = i_sub.add_parser("from-folder", help="Dossier d'images (récursif)")
     f.add_argument("--path", required=True)
     f.add_argument("--output", required=True)
     f.add_argument("--prompt", default="Analyse cette image et décris ce que tu vois.")
@@ -559,21 +563,19 @@ def _make_parser() -> argparse.ArgumentParser:
     c = i_sub.add_parser("from-csv", help="Fichier CSV")
     c.add_argument("--path", required=True)
     c.add_argument("--output", required=True)
-    c.add_argument("--column", required=True,
-                   help="Nom de la colonne contenant le texte")
-    c.add_argument("--id-column", default=None,
-                   help="Nom de la colonne d'ID (optionnel)")
+    c.add_argument("--column", required=True, help="Nom de la colonne contenant le texte")
+    c.add_argument("--id-column", default=None, help="Nom de la colonne d'ID (optionnel)")
     c.add_argument("--prompt", default="{content}")
     c.add_argument("--sensitivity", default="public")
 
     u = i_sub.add_parser("from-urls", help="Liste d'URLs")
-    u.add_argument("--path", required=True,
-                   help="Fichier .txt avec une URL par ligne")
+    u.add_argument("--path", required=True, help="Fichier .txt avec une URL par ligne")
     u.add_argument("--output", required=True)
     u.add_argument("--prompt", default="Résume la page suivante :\n\n{content}")
     u.add_argument("--sensitivity", default="public")
-    u.add_argument("--no-robots", action="store_true",
-                   help="Ne pas vérifier robots.txt (à vos risques)")
+    u.add_argument(
+        "--no-robots", action="store_true", help="Ne pas vérifier robots.txt (à vos risques)"
+    )
 
     i.set_defaults(func=cmd_intake)
 
@@ -607,26 +609,28 @@ def _make_parser() -> argparse.ArgumentParser:
     run.add_argument("--output", required=True, help="Fichier de sortie JSONL")
     run.add_argument("--config", required=True, help="Config YAML")
     run.add_argument("--policy", default=None, help="Politique de résidence (YAML)")
-    run.add_argument("--resume", action="store_true",
-                     help="Reprendre un batch interrompu")
-    run.add_argument("--dry-run", action="store_true",
-                     help="Estimer sans appeler les modèles")
-    run.add_argument("--refresh-benchmarks", action="store_true",
-                     help="Rafraîchir les scores avant de router")
-    run.add_argument("--rank-by-benchmarks", action="store_true",
-                     help="Réordonner les chaînes selon les benchmarks")
-    run.add_argument("--max-cost-eur", type=float, default=None,
-                     help="Budget maximal en euros")
-    run.add_argument("--no-classifier", action="store_true",
-                     help="Désactiver la classification automatique")
-    run.add_argument("--classifier-model", default="qwen3:4b-instruct",
-                     help="Modèle Ollama de classification")
-    run.add_argument("--no-doctor", action="store_true",
-                     help="Skip le pre-flight (utile en CI)")
-    run.add_argument("--no-install", action="store_true",
-                     help="Pre-flight sans installation automatique")
-    run.add_argument("--yes", "-y", action="store_true",
-                     help="Auto-confirmer les installations")
+    run.add_argument("--resume", action="store_true", help="Reprendre un batch interrompu")
+    run.add_argument("--dry-run", action="store_true", help="Estimer sans appeler les modèles")
+    run.add_argument(
+        "--refresh-benchmarks", action="store_true", help="Rafraîchir les scores avant de router"
+    )
+    run.add_argument(
+        "--rank-by-benchmarks",
+        action="store_true",
+        help="Réordonner les chaînes selon les benchmarks",
+    )
+    run.add_argument("--max-cost-eur", type=float, default=None, help="Budget maximal en euros")
+    run.add_argument(
+        "--no-classifier", action="store_true", help="Désactiver la classification automatique"
+    )
+    run.add_argument(
+        "--classifier-model", default="qwen3:4b-instruct", help="Modèle Ollama de classification"
+    )
+    run.add_argument("--no-doctor", action="store_true", help="Skip le pre-flight (utile en CI)")
+    run.add_argument(
+        "--no-install", action="store_true", help="Pre-flight sans installation automatique"
+    )
+    run.add_argument("--yes", "-y", action="store_true", help="Auto-confirmer les installations")
     run.add_argument("--verbose", "-v", action="store_true")
     run.set_defaults(func=cmd_batch_run)
     # ─── setup-secrets ─────────────────────────────────────────

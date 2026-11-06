@@ -69,13 +69,17 @@ class OpenAICompatibleProvider(Provider):
 
         log.debug(
             "POST %s/chat/completions model=%s image=%s",
-            self.base_url, model, bool(image_b64),
+            self.base_url,
+            model,
+            bool(image_b64),
         )
 
         try:
             resp = requests.post(
                 f"{self.base_url}/chat/completions",
-                headers=headers, json=payload, timeout=self._timeout,
+                headers=headers,
+                json=payload,
+                timeout=self._timeout,
             )
         except requests.exceptions.Timeout as e:
             raise ProviderError(f"{self.name}: timeout") from e

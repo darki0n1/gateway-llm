@@ -16,8 +16,13 @@ from pydantic import BaseModel, Field, model_validator
 from gateway_llm.policy import PolicyConfig
 
 __all__ = [
-    "ProviderConfig", "ModelConfig", "DomainChain", "ModelsConfig",
-    "PolicyConfig", "load_config", "load_policy",
+    "DomainChain",
+    "ModelConfig",
+    "ModelsConfig",
+    "PolicyConfig",
+    "ProviderConfig",
+    "load_config",
+    "load_policy",
 ]
 
 
@@ -42,10 +47,9 @@ class ModelConfig(BaseModel):
     output_price_per_1k: float = 0.0
 
     def compute_cost(self, input_tokens: int, output_tokens: int) -> float:
-        return (
-            (input_tokens / 1000.0) * self.input_price_per_1k
-            + (output_tokens / 1000.0) * self.output_price_per_1k
-        )
+        return (input_tokens / 1000.0) * self.input_price_per_1k + (
+            output_tokens / 1000.0
+        ) * self.output_price_per_1k
 
 
 class DomainChain(BaseModel):
@@ -59,7 +63,7 @@ class ModelsConfig(BaseModel):
     domains: dict[str, DomainChain]
 
     @model_validator(mode="after")
-    def _check_refs(self) -> "ModelsConfig":
+    def _check_refs(self) -> ModelsConfig:
         for dname, d in self.domains.items():
             for mk in d.chain:
                 if mk not in self.models:

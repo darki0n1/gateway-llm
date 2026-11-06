@@ -25,7 +25,7 @@ class FitEstimate:
     model_size_gb: float
     vram_gb: float | None
     ratio: float | None
-    category: str          # excellent | good | acceptable | slow | very_slow | unknown
+    category: str  # excellent | good | acceptable | slow | very_slow | unknown
     note: str
 
 
@@ -45,32 +45,50 @@ class HardwareInfo:
     def estimate_fit(self, model_size_gb: float) -> FitEstimate:
         if self.vram_gb is None or self.vram_gb <= 0:
             return FitEstimate(
-                model_size_gb=model_size_gb, vram_gb=None, ratio=None,
-                category="unknown", note="VRAM non détectée, filtrage désactivé",
+                model_size_gb=model_size_gb,
+                vram_gb=None,
+                ratio=None,
+                category="unknown",
+                note="VRAM non détectée, filtrage désactivé",
             )
         ratio = model_size_gb / self.vram_gb
         if ratio <= 0.9:
             return FitEstimate(
-                model_size_gb, self.vram_gb, ratio, "excellent",
+                model_size_gb,
+                self.vram_gb,
+                ratio,
+                "excellent",
                 f"Tient en VRAM ({model_size_gb:.0f} Go ≤ {self.vram_gb:.0f} Go)",
             )
         if ratio <= 1.5:
             return FitEstimate(
-                model_size_gb, self.vram_gb, ratio, "good",
+                model_size_gb,
+                self.vram_gb,
+                ratio,
+                "good",
                 "Léger débordement RAM/CPU, quasi-pleine vitesse",
             )
         if ratio <= 3.0:
             return FitEstimate(
-                model_size_gb, self.vram_gb, ratio, "acceptable",
+                model_size_gb,
+                self.vram_gb,
+                ratio,
+                "acceptable",
                 "Offload RAM significatif, vitesse correcte",
             )
         if ratio <= 6.0:
             return FitEstimate(
-                model_size_gb, self.vram_gb, ratio, "slow",
+                model_size_gb,
+                self.vram_gb,
+                ratio,
+                "slow",
                 "Offload lourd, attendre un ralentissement net",
             )
         return FitEstimate(
-            model_size_gb, self.vram_gb, ratio, "very_slow",
+            model_size_gb,
+            self.vram_gb,
+            ratio,
+            "very_slow",
             "Majoritairement CPU/RAM/SSD, très lent",
         )
 
@@ -85,9 +103,10 @@ def detect_vram() -> HardwareInfo:
     if shutil.which("nvidia-smi"):
         try:
             out = subprocess.run(
-                ["nvidia-smi", "--query-gpu=memory.total",
-                 "--format=csv,noheader,nounits"],
-                capture_output=True, text=True, timeout=5,
+                ["nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader,nounits"],
+                capture_output=True,
+                text=True,
+                timeout=5,
             )
             lines = [l.strip() for l in out.stdout.splitlines() if l.strip()]
             if lines:
@@ -100,12 +119,15 @@ def detect_vram() -> HardwareInfo:
         try:
             out = subprocess.run(
                 ["rocm-smi", "--showmeminfo", "vram", "--json"],
-                capture_output=True, text=True, timeout=5,
+                capture_output=True,
+                text=True,
+                timeout=5,
             )
             m = re.search(r'"VRAM Total Memory \(B\)":\s*(\d+)', out.stdout)
             if m:
                 return HardwareInfo(
-                    vram_gb=float(m.group(1)) / (1024**3), source="rocm-smi",
+                    vram_gb=float(m.group(1)) / (1024**3),
+                    source="rocm-smi",
                 )
         except Exception as e:
             log.warning("rocm-smi failed: %s", e)

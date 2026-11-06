@@ -22,9 +22,7 @@ class OllamaProvider(Provider):
 
     def health(self) -> bool:
         try:
-            return (
-                requests.get(f"{self.base_url}/api/tags", timeout=2).status_code == 200
-            )
+            return requests.get(f"{self.base_url}/api/tags", timeout=2).status_code == 200
         except requests.exceptions.RequestException:
             return False
 
@@ -49,9 +47,7 @@ class OllamaProvider(Provider):
         }
 
         try:
-            resp = requests.post(
-                f"{self.base_url}/api/chat", json=payload, timeout=self._timeout
-            )
+            resp = requests.post(f"{self.base_url}/api/chat", json=payload, timeout=self._timeout)
             resp.raise_for_status()
         except requests.exceptions.RequestException as e:
             raise ProviderError(f"{self.name}: {e}") from e

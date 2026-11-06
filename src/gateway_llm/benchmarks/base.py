@@ -6,12 +6,13 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 
 
 class TaskCategory(str, Enum):
     """Catégories de tâches que le routeur sait gérer."""
+
     CODE_DEBUG = "code_debug"
     THINKING = "thinking"
     PROBLEM_SOLVING = "problem_solving"
@@ -26,11 +27,12 @@ class TaskCategory(str, Enum):
 @dataclass
 class BenchmarkResult:
     """Score d'un modèle dans une catégorie donnée."""
-    model_key: str            # nom normalisé
+
+    model_key: str  # nom normalisé
     category: TaskCategory
-    score: float              # 0-100 (ou 0-5 pour RWS, normalisé)
-    source: str               # "benchlm", "rankllms", "f5", "rws"
-    raw_name: str = ""        # nom original dans la source
+    score: float  # 0-100 (ou 0-5 pour RWS, normalisé)
+    source: str  # "benchlm", "rankllms", "f5", "rws"
+    raw_name: str = ""  # nom original dans la source
 
 
 class BenchmarkSource(ABC):

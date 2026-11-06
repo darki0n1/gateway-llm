@@ -31,12 +31,10 @@ class SecretBackend(ABC):
     name: str = "abstract"
 
     @abstractmethod
-    def get(self, key: str) -> str | None:
-        ...
+    def get(self, key: str) -> str | None: ...
 
     @abstractmethod
-    def is_available(self) -> bool:
-        ...
+    def is_available(self) -> bool: ...
 
     def set(self, key: str, value: str) -> bool:
         """Optionnel : écriture d'un secret. Retourne False par défaut."""
@@ -57,10 +55,17 @@ class PowerShellVaultBackend(SecretBackend):
     def is_available(self) -> bool:
         try:
             r = subprocess.run(
-                [self._ps_exe, "-NoProfile", "-NonInteractive", "-Command",
-                 "Import-Module Microsoft.PowerShell.SecretManagement; "
-                 "Get-SecretVault | Select-Object -First 1 | ConvertTo-Json"],
-                capture_output=True, text=True, timeout=10,
+                [
+                    self._ps_exe,
+                    "-NoProfile",
+                    "-NonInteractive",
+                    "-Command",
+                    "Import-Module Microsoft.PowerShell.SecretManagement; "
+                    "Get-SecretVault | Select-Object -First 1 | ConvertTo-Json",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=10,
             )
             return r.returncode == 0 and r.stdout.strip() not in ("", "null")
         except Exception:
@@ -77,11 +82,12 @@ class PowerShellVaultBackend(SecretBackend):
         try:
             r = subprocess.run(
                 [self._ps_exe, "-NoProfile", "-NonInteractive", "-Command", cmd],
-                capture_output=True, text=True, timeout=15,
+                capture_output=True,
+                text=True,
+                timeout=15,
             )
             if r.returncode != 0:
-                log.warning("Vault '%s' introuvable : %s", key,
-                            (r.stderr or "").strip()[:120])
+                log.warning("Vault '%s' introuvable : %s", key, (r.stderr or "").strip()[:120])
                 self._cache[key] = None
                 return None
             value = r.stdout.strip().replace("\r", "").replace("\n", "")
@@ -102,7 +108,9 @@ class PowerShellVaultBackend(SecretBackend):
         try:
             r = subprocess.run(
                 [self._ps_exe, "-NoProfile", "-NonInteractive", "-Command", cmd],
-                capture_output=True, text=True, timeout=15,
+                capture_output=True,
+                text=True,
+                timeout=15,
             )
             return r.returncode == 0
         except Exception:
@@ -122,6 +130,7 @@ class HashiCorpVaultBackend(SecretBackend):
     def is_available(self) -> bool:
         try:
             import requests
+
             r = requests.get(
                 f"{self._url}/v1/sys/health",
                 headers={"X-Vault-Token": self._token},
@@ -136,6 +145,7 @@ class HashiCorpVaultBackend(SecretBackend):
             return self._cache[key]
         try:
             import requests
+
             r = requests.get(
                 f"{self._url}/v1/{self._mount}/data/gateway-llm",
                 headers={"X-Vault-Token": self._token},
@@ -166,6 +176,7 @@ class AWSSecretsManagerBackend(SecretBackend):
     def is_available(self) -> bool:
         try:
             import boto3  # type: ignore[import-not-found]
+
             self._client = boto3.client("secretsmanager", region_name=self._region)
             self._client.list_secrets(MaxResults=1)
             return True
@@ -178,6 +189,7 @@ class AWSSecretsManagerBackend(SecretBackend):
         try:
             if self._client is None:
                 import boto3  # type: ignore[import-not-found]
+
                 self._client = boto3.client("secretsmanager", region_name=self._region)
             r = self._client.get_secret_value(SecretId=f"{self._prefix}{key}")
             self._cache[key] = r.get("SecretString")
@@ -202,8 +214,10 @@ class AzureKeyVaultBackend(SecretBackend):
             return self._client
         from azure.identity import DefaultAzureCredential  # type: ignore[import-not-found]
         from azure.keyvault.secrets import SecretClient  # type: ignore[import-not-found]
+
         self._client = SecretClient(
-            vault_url=self._vault_url, credential=DefaultAzureCredential(),
+            vault_url=self._vault_url,
+            credential=DefaultAzureCredential(),
         )
         return self._client
 
@@ -244,7 +258,9 @@ class OnePasswordBackend(SecretBackend):
         try:
             r = subprocess.run(
                 ["op", "vault", "list", "--format=json"],
-                capture_output=True, text=True, timeout=10,
+                capture_output=True,
+                text=True,
+                timeout=10,
             )
             return r.returncode == 0
         except Exception:
@@ -256,7 +272,9 @@ class OnePasswordBackend(SecretBackend):
         try:
             r = subprocess.run(
                 ["op", "read", f"op://{self._vault}/gateway-llm/{key}"],
-                capture_output=True, text=True, timeout=10,
+                capture_output=True,
+                text=True,
+                timeout=10,
             )
             if r.returncode != 0:
                 self._cache[key] = None
@@ -290,10 +308,13 @@ class EnvSecretBackend(SecretBackend):
 _BACKEND_FACTORIES = {
     "powershell_vault": lambda c: PowerShellVaultBackend(),
     "hashicorp_vault": lambda c: HashiCorpVaultBackend(
-        c["url"], c["token"], c.get("mount", "secret"),
+        c["url"],
+        c["token"],
+        c.get("mount", "secret"),
     ),
     "aws_secrets_manager": lambda c: AWSSecretsManagerBackend(
-        c.get("region", "us-east-1"), c.get("prefix", "gateway-llm/"),
+        c.get("region", "us-east-1"),
+        c.get("prefix", "gateway-llm/"),
     ),
     "azure_key_vault": lambda c: AzureKeyVaultBackend(c["vault_url"]),
     "1password": lambda c: OnePasswordBackend(c.get("vault", "Private")),

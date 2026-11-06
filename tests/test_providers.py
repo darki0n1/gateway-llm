@@ -89,7 +89,9 @@ def test_openai_compat_extra_headers(mock_post):
         },
     )
     p = OpenAICompatibleProvider(
-        "openrouter", "http://api", "key",
+        "openrouter",
+        "http://api",
+        "key",
         extra_headers={"HTTP-Referer": "http://localhost"},
     )
     p.complete("m1", "prompt", max_tokens=100)
@@ -154,6 +156,7 @@ def test_ollama_health_ok(mock_get):
 @patch("gateway_llm.providers.ollama.requests.get")
 def test_ollama_health_down(mock_get):
     import requests as req
+
     mock_get.side_effect = req.exceptions.ConnectionError("refused")
     p = OllamaProvider("ollama", "http://localhost:11434")
     assert p.health() is False
@@ -167,8 +170,10 @@ def test_cloudflare_success(mock_post):
         json=lambda: {"result": {"response": "cloudflare reply"}},
     )
     p = CloudflareProvider(
-        "cf", "https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run",
-        api_key="key", account_id="acc123",
+        "cf",
+        "https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run",
+        api_key="key",
+        account_id="acc123",
     )
     r = p.complete("@cf/meta/llama", "prompt", max_tokens=100)
     assert r.text == "cloudflare reply"
@@ -179,7 +184,10 @@ def test_cloudflare_success(mock_post):
 def test_cloudflare_429(mock_post):
     mock_post.return_value = MagicMock(status_code=429)
     p = CloudflareProvider(
-        "cf", "https://x/{account_id}/ai/run", api_key="k", account_id="a",
+        "cf",
+        "https://x/{account_id}/ai/run",
+        api_key="k",
+        account_id="a",
     )
     with pytest.raises(RateLimitError):
         p.complete("@cf/m", "prompt", max_tokens=100)
@@ -188,10 +196,14 @@ def test_cloudflare_429(mock_post):
 @patch("gateway_llm.providers.cloudflare.requests.post")
 def test_cloudflare_malformed(mock_post):
     mock_post.return_value = MagicMock(
-        status_code=200, json=lambda: {"unexpected": "shape"},
+        status_code=200,
+        json=lambda: {"unexpected": "shape"},
     )
     p = CloudflareProvider(
-        "cf", "https://x/{account_id}/ai/run", api_key="k", account_id="a",
+        "cf",
+        "https://x/{account_id}/ai/run",
+        api_key="k",
+        account_id="a",
     )
     with pytest.raises(ProviderUnavailableError, match="malformée"):
         p.complete("@cf/m", "prompt", max_tokens=100)

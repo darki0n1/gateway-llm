@@ -47,7 +47,7 @@ class RWSTranslationAdapter(BenchmarkSource):
                 BenchmarkResult(
                     model_key=normalize_model_name(raw_name),
                     category=category,
-                    score=float(score_5) * 20.0,   # 4.5/5 -> 90/100
+                    score=float(score_5) * 20.0,  # 4.5/5 -> 90/100
                     source=self.name,
                     raw_name=raw_name,
                 )

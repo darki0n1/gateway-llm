@@ -53,7 +53,9 @@ class CloudflareProvider(Provider):
 
         try:
             resp = requests.post(
-                f"{self.base_url}/{model}", headers=headers, json=payload,
+                f"{self.base_url}/{model}",
+                headers=headers,
+                json=payload,
                 timeout=self._timeout,
             )
         except requests.exceptions.RequestException as e:

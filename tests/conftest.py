@@ -24,7 +24,9 @@ def minimal_config() -> ModelsConfig:
     return ModelsConfig(
         providers={
             "fake": ProviderConfig(
-                type="openai_compat", base_url="http://fake", local=True,
+                type="openai_compat",
+                base_url="http://fake",
+                local=True,
             ),
         },
         models={"m1": ModelConfig(provider="fake")},

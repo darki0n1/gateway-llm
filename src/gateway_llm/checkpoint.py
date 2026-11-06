@@ -49,6 +49,7 @@ class Checkpoint:
             f.write(json.dumps(result, ensure_ascii=False) + "\n")
             f.flush()
             import os
+
             os.fsync(f.fileno())
         self._done.add(result["id"])
 

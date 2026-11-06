@@ -54,20 +54,20 @@ def test_remaining_eur():
     b.record(3.0)
     assert b.snapshot().remaining_eur == 7.0
     b.record(8.0)
-    assert b.snapshot().remaining_eur == 0.0   # jamais négatif
+    assert b.snapshot().remaining_eur == 0.0  # jamais négatif
 
 
 def test_can_escalate_within_budget():
     b = BudgetTracker(max_eur=10.0)
     b.record(5.0)
-    assert b.can_escalate(2.0)      # 5+2=7 <= 10
-    assert b.can_escalate(5.0)      # 5+5=10 <= 10
+    assert b.can_escalate(2.0)  # 5+2=7 <= 10
+    assert b.can_escalate(5.0)  # 5+5=10 <= 10
     assert not b.can_escalate(5.1)  # 5+5.1=10.1 > 10
 
 
 def test_negative_cost_ignored():
     b = BudgetTracker(max_eur=10.0)
-    b.record(-5.0)   # ignoré (max(0, ...))
+    b.record(-5.0)  # ignoré (max(0, ...))
     assert b.snapshot().spent_eur == 0.0
 
 
@@ -92,10 +92,13 @@ def test_snapshot_dataclass():
 # ─── Thread safety (basique) ───────────────────────────────────
 def test_thread_safety_concurrent_records():
     import threading
+
     b = BudgetTracker(max_eur=None)
+
     def worker():
         for _ in range(1000):
             b.record(0.001)
+
     threads = [threading.Thread(target=worker) for _ in range(4)]
     for t in threads:
         t.start()

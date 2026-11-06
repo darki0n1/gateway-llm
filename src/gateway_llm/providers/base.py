@@ -54,7 +54,7 @@ class Provider(ABC):
         prompt: str,
         max_tokens: int,
         temperature: float = 0.3,
-        image_b64: str | None = None
+        image_b64: str | None = None,
     ) -> ProviderResponse:
         """Envoie un prompt et retourne la réponse normalisée.
 

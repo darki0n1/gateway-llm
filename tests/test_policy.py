@@ -12,26 +12,32 @@ from gateway_llm.policy import PolicyConfig
 
 # ─── Règle simple, liste explicite ─────────────────────────────
 def test_provider_allowed():
-    p = PolicyConfig(residency={
-        "public": {"allowed_providers": ["groq", "mistral"]},
-    })
+    p = PolicyConfig(
+        residency={
+            "public": {"allowed_providers": ["groq", "mistral"]},
+        }
+    )
     assert p.is_allowed("groq", "public")
     assert p.is_allowed("mistral", "public")
 
 
 def test_provider_denied():
-    p = PolicyConfig(residency={
-        "confidential": {"allowed_providers": ["ollama"]},
-    })
+    p = PolicyConfig(
+        residency={
+            "confidential": {"allowed_providers": ["ollama"]},
+        }
+    )
     assert not p.is_allowed("groq", "confidential")
     assert p.is_allowed("ollama", "confidential")
 
 
 # ─── Sensibilité inconnue → default_allow ──────────────────────
 def test_unknown_sensitivity_default_allow_true():
-    p = PolicyConfig(residency={
-        "confidential": {"allowed_providers": ["ollama"]},
-    })
+    p = PolicyConfig(
+        residency={
+            "confidential": {"allowed_providers": ["ollama"]},
+        }
+    )
     assert p.is_allowed("groq", "sensibilité_inconnue")
 
 
@@ -46,10 +52,12 @@ def test_unknown_sensitivity_default_allow_false():
 
 # ─── Règle "default" fallback ──────────────────────────────────
 def test_default_rule_used_for_unknown_sensitivity():
-    p = PolicyConfig(residency={
-        "confidential": {"allowed_providers": ["ollama"]},
-        "default": {"allowed_providers": ["ollama", "mistral"]},
-    })
+    p = PolicyConfig(
+        residency={
+            "confidential": {"allowed_providers": ["ollama"]},
+            "default": {"allowed_providers": ["ollama", "mistral"]},
+        }
+    )
     assert p.is_allowed("mistral", "sensibilité_inconnue")
     assert not p.is_allowed("groq", "sensibilité_inconnue")
     assert not p.is_allowed("mistral", "confidential")
@@ -57,9 +65,11 @@ def test_default_rule_used_for_unknown_sensitivity():
 
 # ─── Wildcards ─────────────────────────────────────────────────
 def test_wildcard_prefix():
-    p = PolicyConfig(residency={
-        "public": {"allowed_providers": ["groq-*", "mistral"]},
-    })
+    p = PolicyConfig(
+        residency={
+            "public": {"allowed_providers": ["groq-*", "mistral"]},
+        }
+    )
     assert p.is_allowed("groq-eu", "public")
     assert p.is_allowed("groq-us", "public")
     assert not p.is_allowed("groq", "public")
@@ -67,16 +77,20 @@ def test_wildcard_prefix():
 
 
 def test_wildcard_all():
-    p = PolicyConfig(residency={
-        "public": {"allowed_providers": ["*"]},
-    })
+    p = PolicyConfig(
+        residency={
+            "public": {"allowed_providers": ["*"]},
+        }
+    )
     assert p.is_allowed("n-importe-quoi", "public")
 
 
 def test_wildcard_suffix():
-    p = PolicyConfig(residency={
-        "internal": {"allowed_providers": ["*-eu", "ollama"]},
-    })
+    p = PolicyConfig(
+        residency={
+            "internal": {"allowed_providers": ["*-eu", "ollama"]},
+        }
+    )
     assert p.is_allowed("mistral-eu", "internal")
     assert p.is_allowed("groq-eu", "internal")
     assert not p.is_allowed("groq-us", "internal")
@@ -91,31 +105,39 @@ def test_list_form_normalized():
 
 
 def test_dict_form_accepted():
-    p = PolicyConfig(residency={
-        "confidential": {"allowed_providers": ["ollama"]},
-    })
+    p = PolicyConfig(
+        residency={
+            "confidential": {"allowed_providers": ["ollama"]},
+        }
+    )
     assert p.is_allowed("ollama", "confidential")
 
 
 # ─── allowed_providers() helper ────────────────────────────────
 def test_allowed_providers_returns_list():
-    p = PolicyConfig(residency={
-        "public": {"allowed_providers": ["a", "b", "c"]},
-    })
+    p = PolicyConfig(
+        residency={
+            "public": {"allowed_providers": ["a", "b", "c"]},
+        }
+    )
     assert p.allowed_providers("public") == ["a", "b", "c"]
 
 
 def test_allowed_providers_unknown_returns_empty():
-    p = PolicyConfig(residency={
-        "public": {"allowed_providers": ["a"]},
-    })
+    p = PolicyConfig(
+        residency={
+            "public": {"allowed_providers": ["a"]},
+        }
+    )
     assert p.allowed_providers("sensibilité_inconnue") == []
 
 
 def test_allowed_providers_default_rule():
-    p = PolicyConfig(residency={
-        "default": {"allowed_providers": ["x", "y"]},
-    })
+    p = PolicyConfig(
+        residency={
+            "default": {"allowed_providers": ["x", "y"]},
+        }
+    )
     assert p.allowed_providers("sensibilité_inconnue") == ["x", "y"]
 
 

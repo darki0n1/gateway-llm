@@ -45,7 +45,9 @@ def test_no_azure_import_at_module_level():
 
     try:
         import importlib
+
         import gateway_llm.secrets as sec
+
         importlib.reload(sec)
         assert hasattr(sec, "AzureKeyVaultBackend")
     finally:
@@ -61,7 +63,9 @@ def test_no_boto3_import_at_module_level():
 
     try:
         import importlib
+
         import gateway_llm.secrets as sec
+
         importlib.reload(sec)
         assert hasattr(sec, "AWSSecretsManagerBackend")
     finally:
@@ -139,7 +143,9 @@ def test_vault_caches_result(mock_run, _mock_which):
 @patch("gateway_llm.secrets.subprocess.run")
 def test_vault_nonzero_returncode(mock_run, _mock_which):
     mock_run.return_value = MagicMock(
-        returncode=1, stdout="", stderr="not found",
+        returncode=1,
+        stdout="",
+        stderr="not found",
     )
     assert PowerShellVaultBackend().get("MISSING") is None
 
@@ -149,7 +155,9 @@ def test_vault_nonzero_returncode(mock_run, _mock_which):
 def test_vault_strips_line_endings(mock_run, _mock_which):
     """PowerShell 5.1 ajoute parfois des \\r\\n : ils doivent être nettoyés."""
     mock_run.return_value = MagicMock(
-        returncode=0, stdout="secret_value\r\n", stderr="",
+        returncode=0,
+        stdout="secret_value\r\n",
+        stderr="",
     )
     assert PowerShellVaultBackend().get("K") == "secret_value"
 
@@ -164,7 +172,9 @@ def test_vault_no_powershell_raises(_mock_which):
 @patch("gateway_llm.secrets.subprocess.run")
 def test_vault_is_available_when_vault_registered(mock_run, _mock_which):
     mock_run.return_value = MagicMock(
-        returncode=0, stdout='{"Name":"LocalVault"}', stderr="",
+        returncode=0,
+        stdout='{"Name":"LocalVault"}',
+        stderr="",
     )
     assert PowerShellVaultBackend().is_available() is True
 
@@ -198,6 +208,7 @@ def test_hashicorp_get_404(mock_get):
 @patch("requests.get")
 def test_hashicorp_network_error(mock_get):
     import requests
+
     mock_get.side_effect = requests.exceptions.ConnectionError("refused")
     b = HashiCorpVaultBackend("http://vault:8200", "token")
     assert b.get("K") is None
@@ -248,7 +259,9 @@ def test_onepassword_no_binary_raises(_mock_which):
 @patch("gateway_llm.secrets.subprocess.run")
 def test_onepassword_no_shell_true(mock_run, _mock_which):
     mock_run.return_value = MagicMock(
-        returncode=0, stdout="secret_value", stderr="",
+        returncode=0,
+        stdout="secret_value",
+        stderr="",
     )
     OnePasswordBackend().get("MY_KEY")
 
@@ -262,7 +275,9 @@ def test_onepassword_no_shell_true(mock_run, _mock_which):
 @patch("gateway_llm.secrets.subprocess.run")
 def test_onepassword_get_success(mock_run, _mock_which):
     mock_run.return_value = MagicMock(
-        returncode=0, stdout="mysecret\n", stderr="",
+        returncode=0,
+        stdout="mysecret\n",
+        stderr="",
     )
     b = OnePasswordBackend("Private")
     assert b.get("GROQ_API_KEY") == "mysecret"
@@ -272,7 +287,9 @@ def test_onepassword_get_success(mock_run, _mock_which):
 @patch("gateway_llm.secrets.subprocess.run")
 def test_onepassword_not_found(mock_run, _mock_which):
     mock_run.return_value = MagicMock(
-        returncode=1, stdout="", stderr="not found",
+        returncode=1,
+        stdout="",
+        stderr="not found",
     )
     assert OnePasswordBackend().get("MISSING") is None
 
@@ -280,6 +297,7 @@ def test_onepassword_not_found(mock_run, _mock_which):
 # ─── get_backend() / save_backend_config() ────────────────────
 def test_get_backend_no_config_raises(tmp_path, monkeypatch):
     import gateway_llm.secrets as sec
+
     monkeypatch.setattr(sec, "_CONFIG_PATH", tmp_path / "nonexistent.yaml")
     with pytest.raises(RuntimeError, match="Aucun backend de secrets"):
         get_backend()
@@ -287,6 +305,7 @@ def test_get_backend_no_config_raises(tmp_path, monkeypatch):
 
 def test_get_backend_unknown_backend_raises(tmp_path, monkeypatch):
     import gateway_llm.secrets as sec
+
     cfg = tmp_path / "secrets.yaml"
     monkeypatch.setattr(sec, "_CONFIG_PATH", cfg)
     cfg.write_text("backend: backend_qui_nexiste_pas\noptions: {}\n")
@@ -297,6 +316,7 @@ def test_get_backend_unknown_backend_raises(tmp_path, monkeypatch):
 def test_save_then_get_backend_env(tmp_path, monkeypatch):
     """save_backend_config persiste, get_backend relit le bon backend."""
     import gateway_llm.secrets as sec
+
     cfg = tmp_path / "secrets.yaml"
     monkeypatch.setattr(sec, "_CONFIG_PATH", cfg)
 
@@ -308,6 +328,7 @@ def test_save_then_get_backend_env(tmp_path, monkeypatch):
 @patch("gateway_llm.secrets.shutil.which", return_value="/usr/bin/pwsh")
 def test_save_then_get_backend_powershell(_mock_which, tmp_path, monkeypatch):
     import gateway_llm.secrets as sec
+
     cfg = tmp_path / "secrets.yaml"
     monkeypatch.setattr(sec, "_CONFIG_PATH", cfg)
 
@@ -318,6 +339,7 @@ def test_save_then_get_backend_powershell(_mock_which, tmp_path, monkeypatch):
 
 def test_save_backend_config_creates_parent_dir(tmp_path, monkeypatch):
     import gateway_llm.secrets as sec
+
     cfg = tmp_path / "subdir" / "secrets.yaml"
     monkeypatch.setattr(sec, "_CONFIG_PATH", cfg)
     save_backend_config("env", {})
@@ -328,7 +350,9 @@ def test_save_backend_config_creates_parent_dir(tmp_path, monkeypatch):
 def test_save_backend_config_yaml_format(tmp_path, monkeypatch):
     """Le fichier écrit doit être du YAML valide, pas du JSON."""
     import yaml as yaml_mod
+
     import gateway_llm.secrets as sec
+
     cfg = tmp_path / "secrets.yaml"
     monkeypatch.setattr(sec, "_CONFIG_PATH", cfg)
 

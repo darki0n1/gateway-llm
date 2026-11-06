@@ -104,9 +104,11 @@ def test_guardrail_fail_stops_chain_and_preserves_response():
     renvoie la réponse, et NE tente PAS le modèle suivant."""
     config = _two_model_config()
     p1 = FakeProvider("p1", [make_response("bad")])
-    p2 = FakeProvider("p2", [])   # ne doit JAMAIS être appelé
+    p2 = FakeProvider("p2", [])  # ne doit JAMAIS être appelé
     router = _make_router(
-        config, {"p1": p1, "p2": p2}, guardrail=AlwaysFailGuardrail(),
+        config,
+        {"p1": p1, "p2": p2},
+        guardrail=AlwaysFailGuardrail(),
     )
     result = router.route("task", "generation")
     assert not result.success
@@ -151,7 +153,7 @@ def test_budget_exceeded_before_route():
     config = _two_model_config()
     p1 = FakeProvider("p1", [])
     budget = BudgetTracker(max_eur=1.0)
-    budget.record(2.0)   # déjà dépassé
+    budget.record(2.0)  # déjà dépassé
     router = _make_router(config, {"p1": p1}, budget=budget)
     result = router.route("task", "generation")
     assert not result.success
@@ -165,19 +167,25 @@ def test_budget_records_cost():
         models={
             "m1": ModelConfig(
                 provider="p",
-                input_price_per_1k=1.0,    # 1€ / 1000 tokens
+                input_price_per_1k=1.0,  # 1€ / 1000 tokens
                 output_price_per_1k=2.0,
             ),
         },
         domains={"generation": DomainChain(chain=["m1"], max_tokens=100)},
     )
     # 1000 input tokens + 500 output = 1.0€ + 1.0€ = 2.0€
-    provider = FakeProvider("p", [
-        ProviderResponse(
-            text="ok", model="m1", provider="p",
-            input_tokens=1000, output_tokens=500,
-        ),
-    ])
+    provider = FakeProvider(
+        "p",
+        [
+            ProviderResponse(
+                text="ok",
+                model="m1",
+                provider="p",
+                input_tokens=1000,
+                output_tokens=500,
+            ),
+        ],
+    )
     budget = BudgetTracker(max_eur=10.0)
     router = _make_router(config, {"p": provider}, budget=budget)
     result = router.route("task", "generation")
@@ -230,7 +238,10 @@ class _FakeBenchmarkSource(BenchmarkSource):
     def fetch(self, category):
         return [
             BenchmarkResult(
-                model_key=k, category=category, score=v, source="fake",
+                model_key=k,
+                category=category,
+                score=v,
+                source="fake",
             )
             for k, v in self._scores.items()
         ]
@@ -265,7 +276,9 @@ def test_benchmarks_reorder_chain(tmp_path):
     p2 = FakeProvider("p2", [make_response("m2 wins")])
     p3 = FakeProvider("p3", [])
     router = _make_router(
-        config, {"p1": p1, "p2": p2, "p3": p3}, benchmarks=agg,
+        config,
+        {"p1": p1, "p2": p2, "p3": p3},
+        benchmarks=agg,
     )
     result = router.route("task", "code_debug")
     assert result.success
