@@ -12,6 +12,7 @@ AWS Secrets Manager, Azure Key Vault, Variables d'environnement.
 """
 
 from __future__ import annotations
+from typing import Any
 
 import logging
 import os
@@ -170,7 +171,7 @@ class AWSSecretsManagerBackend(SecretBackend):
     def __init__(self, region: str = "us-east-1", prefix: str = "gateway-llm/") -> None:
         self._region = region
         self._prefix = prefix
-        self._client = None
+        self._client = Any = None
         self._cache: dict[str, str | None] = {}
 
     def is_available(self) -> bool:
@@ -206,7 +207,7 @@ class AzureKeyVaultBackend(SecretBackend):
 
     def __init__(self, vault_url: str) -> None:
         self._vault_url = vault_url.rstrip("/")
-        self._client = None
+        self._client = Any = None
         self._cache: dict[str, str | None] = {}
 
     def _get_client(self):

@@ -136,7 +136,7 @@ class SemanticRouter:
                 timeout=10,
             )
             resp.raise_for_status()
-            return resp.json()["embedding"]
+            return list(resp.json()["embedding"])
         except Exception as e:
             log.debug("Erreur embedding pour '%s': %s", text[:20], e)
             return None

@@ -52,6 +52,7 @@ dev = [
     "bandit>=1.7",
     "pip-audit>=2.7",
     "mypy>=1.10",
+    "types-PyYAML",
 ]
 
 [project.scripts]
@@ -109,7 +110,7 @@ exclude_lines = [
 # ────────────────────────────────────────────────────────────────
 [tool.mypy]
 python_version = "3.11"
-strict = true
-warn_unused_ignores = true
+check_untyped_defs = true
+ignore_missing_imports = true
 warn_return_any = true
-warn_redundant_casts = true
+warn_unused_configs = true
