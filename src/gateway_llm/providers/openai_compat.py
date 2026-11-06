@@ -9,6 +9,7 @@ import logging
 
 import requests
 
+from typing import Any
 from .base import (
     Provider,
     ProviderError,
@@ -60,7 +61,7 @@ class OpenAICompatibleProvider(Provider):
         else:
             user_content = prompt
 
-        payload = {
+        payload: Any = {
             "model": model,
             "messages": [{"role": "user", "content": user_content}],
             "temperature": temperature,
@@ -77,10 +78,8 @@ class OpenAICompatibleProvider(Provider):
         try:
             resp = requests.post(
                 f"{self.base_url}/chat/completions",
-                headers=headers,
-                json=payload,
-                timeout=self._timeout,
-            )
+                headers=headers, json=payload, timeout=self._timeout,
+            ) # type: ignore[arg-type]
         except requests.exceptions.Timeout as e:
             raise ProviderError(f"{self.name}: timeout") from e
         except requests.exceptions.RequestException as e:

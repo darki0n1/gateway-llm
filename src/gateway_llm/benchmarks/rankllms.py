@@ -9,6 +9,7 @@ import logging
 
 import requests
 
+from typing import Any
 from .base import BenchmarkResult, BenchmarkSource, TaskCategory
 from .normalizer import normalize_model_name
 
@@ -36,11 +37,13 @@ class RankLLMsAdapter(BenchmarkSource):
         dimension = _RANKLLMS_CATEGORY[category]
         log.info("RankLLMs: fetch dimension=%s", dimension)
         try:
+            params: Any = {"dimension": dimension, "limit": 100}
             resp = requests.get(
                 f"{_BASE_URL}/leaderboard",
-                params={"dimension": dimension, "limit": 100},
+                params=params,
                 timeout=30,
-            )
+            ) # type: ignore[arg-type]
+            
             resp.raise_for_status()
             data = resp.json()
         except Exception as e:

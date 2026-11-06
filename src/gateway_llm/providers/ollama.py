@@ -9,6 +9,7 @@ import logging
 
 import requests
 
+from typing import Any
 from .base import Provider, ProviderError, ProviderResponse, ProviderUnavailableError
 
 log = logging.getLogger(__name__)
@@ -38,16 +39,18 @@ class OllamaProvider(Provider):
         if image_b64:
             message["images"] = [image_b64]
 
-        payload = {
+        payload: Any = {
             "model": model,
-            "messages": [message],
+            "messages": [{"role": "user", "content": prompt}],
             "stream": False,
             "think": False,
             "options": {"temperature": temperature, "num_predict": max_tokens},
         }
 
         try:
-            resp = requests.post(f"{self.base_url}/api/chat", json=payload, timeout=self._timeout)
+            resp = requests.post(
+                f"{self.base_url}/api/chat", json=payload, timeout=self._timeout
+            ) # type: ignore[arg-type]
             resp.raise_for_status()
         except requests.exceptions.RequestException as e:
             raise ProviderError(f"{self.name}: {e}") from e

@@ -9,6 +9,7 @@ import logging
 
 import requests
 
+from typing import Any
 from .base import (
     Provider,
     ProviderError,
@@ -40,12 +41,13 @@ class CloudflareProvider(Provider):
         prompt: str,
         max_tokens: int,
         temperature: float = 0.3,
+        image_b64: str | None = None,
     ) -> ProviderResponse:
         headers = {
             "Authorization": f"Bearer {self._api_key}",
             "Content-Type": "application/json",
         }
-        payload = {
+        payload: Any = {
             "messages": [{"role": "user", "content": prompt}],
             "max_tokens": max_tokens,
             "temperature": temperature,
@@ -53,11 +55,9 @@ class CloudflareProvider(Provider):
 
         try:
             resp = requests.post(
-                f"{self.base_url}/{model}",
-                headers=headers,
-                json=payload,
+                f"{self.base_url}/{model}", headers=headers, json=payload,
                 timeout=self._timeout,
-            )
+            ) # type: ignore[arg-type]        
         except requests.exceptions.RequestException as e:
             raise ProviderError(f"{self.name}: {e}") from e
 

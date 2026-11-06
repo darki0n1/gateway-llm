@@ -12,7 +12,6 @@ AWS Secrets Manager, Azure Key Vault, Variables d'environnement.
 """
 
 from __future__ import annotations
-from typing import Any
 
 import logging
 import os
@@ -20,6 +19,7 @@ import pathlib
 import shutil
 import subprocess
 from abc import ABC, abstractmethod
+from typing import Any
 
 import yaml
 
@@ -171,7 +171,7 @@ class AWSSecretsManagerBackend(SecretBackend):
     def __init__(self, region: str = "us-east-1", prefix: str = "gateway-llm/") -> None:
         self._region = region
         self._prefix = prefix
-        self._client = Any = None
+        self._client : Any = None
         self._cache: dict[str, str | None] = {}
 
     def is_available(self) -> bool:
@@ -207,7 +207,7 @@ class AzureKeyVaultBackend(SecretBackend):
 
     def __init__(self, vault_url: str) -> None:
         self._vault_url = vault_url.rstrip("/")
-        self._client = Any = None
+        self._client : Any = None
         self._cache: dict[str, str | None] = {}
 
     def _get_client(self):
@@ -327,7 +327,7 @@ def _load_config() -> dict | None:
     if not _CONFIG_PATH.exists():
         return None
     try:
-        return yaml.safe_load(_CONFIG_PATH.read_text(encoding="utf-8"))
+        return yaml.safe_load(_CONFIG_PATH.read_text(encoding="utf-8"))  # type: ignore[no-any-return]
     except Exception:
         return None
 

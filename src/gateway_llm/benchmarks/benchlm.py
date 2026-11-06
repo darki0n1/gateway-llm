@@ -9,6 +9,7 @@ import logging
 
 import requests
 
+from typing import Any
 from .base import BenchmarkResult, BenchmarkSource, TaskCategory
 from .normalizer import normalize_model_name
 
@@ -39,11 +40,12 @@ class BenchLMAdapter(BenchmarkSource):
         benchlm_cat = _BENCHLM_CATEGORY[category]
         log.info("BenchLM: fetch category=%s", benchlm_cat)
         try:
+            params: Any = {"category": benchlm_cat, "limit": 200, "format": "json"}
             resp = requests.get(
                 _BASE_URL,
-                params={"category": benchlm_cat, "limit": 200, "format": "json"},
+                params=params,
                 timeout=30,
-            )
+            ) # type: ignore[arg-type]
             resp.raise_for_status()
             data = resp.json()
         except Exception as e:
