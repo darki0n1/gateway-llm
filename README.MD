@@ -2,7 +2,7 @@
 
 > **Quality-Gated Batch Router** — Routage LLM par cascade, guardrails, budget maîtrisé, résidence des données respectée.
 
-[![CI](https://github.com/<vous>/gateway-llm/actions/workflows/ci.yml/badge.svg)](https://github.com/<vous>/gateway-llm/actions/workflows/ci.yml)
+[![CI](https://github.com/darki0n1/gateway-llm/actions/workflows/ci.yml/badge.svg)](https://github.com/<vous>/gateway-llm/actions/workflows/ci.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue.svg)](https://www.python.org/)
 
