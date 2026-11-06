@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-from llm_gateway.quota import QuotaManager
+from gateway_llm.quota import QuotaManager
 
 
 def test_fresh_provider_available():
@@ -24,7 +24,7 @@ def test_after_rate_limit_unavailable():
 
 
 def test_cooldown_expires():
-    with patch("llm_gateway.quota.time.monotonic") as mock_time:
+    with patch("gateway_llm.quota.time.monotonic") as mock_time:
         mock_time.return_value = 100.0
         q = QuotaManager(cooldown_seconds=60)
         q.record_rate_limit("groq")
@@ -47,7 +47,7 @@ def test_providers_independent():
 
 def test_429_consecutive_does_not_permanently_ban():
     """Le bug original : 2× 429 = ban permanent. Corrigé par le cooldown."""
-    with patch("llm_gateway.quota.time.monotonic") as mock_time:
+    with patch("gateway_llm.quota.time.monotonic") as mock_time:
         mock_time.return_value = 100.0
         q = QuotaManager(cooldown_seconds=60)
         q.record_rate_limit("groq")

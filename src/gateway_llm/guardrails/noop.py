@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from llm_gateway.guardrails.base import Guardrail, GuardrailResult
+from gateway_llm.guardrails.base import Guardrail, GuardrailResult
 
 
 class NoOpGuardrail(Guardrail):

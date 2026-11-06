@@ -1,12 +1,12 @@
-# Guide d'utilisation de l'application llm-gateway
+# Guide d'utilisation de l'application gateway-llm
 
 ## À quoi sert cette application ?
 
-L'application llm-gateway traite automatiquement un grand nombre de tâches en utilisant des modèles d'intelligence artificielle. Vous fournissez des données (images, textes, fichiers CSV, URLs) et une consigne. L'application sélectionne le modèle adapté, vérifie la qualité de chaque réponse et produit un rapport complet.
+L'application gateway-llm traite automatiquement un grand nombre de tâches en utilisant des modèles d'intelligence artificielle. Vous fournissez des données (images, textes, fichiers CSV, URLs) et une consigne. L'application sélectionne le modèle adapté, vérifie la qualité de chaque réponse et produit un rapport complet.
 
 ## Ce que vous voyez à l'ouverture
 
-L'application s'ouvre en tapant `python -m llm_gateway.gui` dans un terminal, ou en double-cliquant sur le raccourci si vous en avez un.
+L'application s'ouvre en tapant `python -m gateway_llm.gui` dans un terminal, ou en double-cliquant sur le raccourci si vous en avez un.
 
 Une fenêtre s'affiche avec quatre onglets :
 
@@ -97,7 +97,7 @@ Pour cela :
 
 ## Besoin d'aide
 
-- Pour vérifier que tout est en place : `llm-gateway doctor --config config/models.yaml` dans un terminal.
-- Pour installer les modèles locaux manquants : `llm-gateway setup --config config/models.yaml`.
+- Pour vérifier que tout est en place : `gateway-llm doctor --config config/models.yaml` dans un terminal.
+- Pour installer les modèles locaux manquants : `gateway-llm setup --config config/models.yaml`.
 - Pour les aspects techniques : consulter le fichier `README.md`.
 - Si une erreur apparaît, elle indique en général la cause. Les problèmes les plus courants sont : un modèle manquant, un fichier introuvable, ou un manque d'espace disque.

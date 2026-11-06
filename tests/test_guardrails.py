@@ -9,9 +9,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from llm_gateway.guardrails.base import Guardrail, GuardrailResult
-from llm_gateway.guardrails.noop import NoOpGuardrail
-from llm_gateway.guardrails.nemo import NemoGuardrail
+from gateway_llm.guardrails.base import Guardrail, GuardrailResult
+from gateway_llm.guardrails.noop import NoOpGuardrail
+from gateway_llm.guardrails.nemo import NemoGuardrail
 
 
 # ─── Interface ─────────────────────────────────────────────────

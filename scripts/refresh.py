@@ -21,7 +21,7 @@ import requests
 from bs4 import BeautifulSoup
 
 OUT = pathlib.Path("benchmarks_cache/f5_safety.json")
-HEADERS = {"User-Agent": "llm-gateway-benchmark-bot/0.1"}
+HEADERS = {"User-Agent": "gateway-llm-benchmark-bot/0.1"}
 
 # URL publiques des deux classements
 URLS = {

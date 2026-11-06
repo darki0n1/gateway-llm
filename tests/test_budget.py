@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from llm_gateway.budget import BudgetSnapshot, BudgetTracker
+from gateway_llm.budget import BudgetSnapshot, BudgetTracker
 
 
 # ─── Sans plafond ──────────────────────────────────────────────

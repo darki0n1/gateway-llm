@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import importlib
 import logging
-import os
+import pathlib
 import shutil
 from dataclasses import dataclass, field
 from enum import Enum
@@ -55,18 +55,16 @@ class DoctorReport:
                 print(f"      → {r.hint}")
 
 
-_REQUIRED_PY = ["requests", "pydantic", "yaml"]
-_OPTIONAL_PY = {
-    "bs4": "pip install beautifulsoup4  (intake from-urls)",
-    "nemoguardrails": "pip install -e \".[guardrails]\"  (NemoGuardrail)",
-    "boto3": "pip install -e \".[aws]\"  (AWS Secrets Manager)",
-    "azure.identity": "pip install -e \".[azure]\"  (Azure Key Vault)",
-}
-
-_CLOUD_API_ENV_VARS = [
-    "GROQ_API_KEY", "MISTRAL_API_KEY", "OPENROUTER_API_KEY",
-    "GOOGLE_API_KEY", "NVIDIA_API_KEY",
-    "CLOUDFLARE_API_KEY", "CLOUDFLARE_ACCOUNT_ID",
+# Toutes les dépendances sont maintenant obligatoires (dans `dependencies`)
+_REQUIRED_PY = [
+    "requests",
+    "pydantic",
+    "yaml",
+    "bs4",
+    "nemoguardrails",
+    "boto3",
+    "azure.identity",
+    "azure.keyvault.secrets",
 ]
 
 
@@ -93,26 +91,17 @@ class Doctor:
         missing = [m for m in _REQUIRED_PY if not self._import_ok(m)]
         if missing:
             report.add(CheckResult(
-                name="Python (requis)",
+                name="Python (dépendances)",
                 severity=Severity.ERROR,
                 message=f"Manquants : {', '.join(missing)}",
-                hint="pip install -e .",
+                hint="pip install --upgrade gateway-llm",
             ))
         else:
             report.add(CheckResult(
-                name="Python (requis)",
+                name="Python (dépendances)",
                 severity=Severity.OK,
-                message="requests, pydantic, yaml importables",
+                message=f"{len(_REQUIRED_PY)} packages importables",
             ))
-
-        for mod, hint in _OPTIONAL_PY.items():
-            if not self._import_ok(mod):
-                report.add(CheckResult(
-                    name=f"Python (optionnel) : {mod}",
-                    severity=Severity.WARNING,
-                    message="Absent",
-                    hint=hint,
-                ))
 
     @staticmethod
     def _import_ok(mod: str) -> bool:
@@ -123,9 +112,9 @@ class Doctor:
             return False
 
     def _check_secret_storage(self, report: DoctorReport) -> None:
-        """Vérifie que les secrets sont dans un coffre-fort, pas en .env."""
+        """Vérifie que les secrets sont dans un coffre-fort configuré."""
         try:
-            from llm_gateway.secrets import _load_config, get_backend
+            from gateway_llm.secrets import _load_config, get_backend
         except Exception as e:
             report.add(CheckResult(
                 name="Stockage des secrets",
@@ -134,37 +123,27 @@ class Doctor:
             ))
             return
 
+        # Avertit si un fichier .env traîne (peu importe le backend configuré)
+        if pathlib.Path(".env").exists():
+            report.add(CheckResult(
+                name="Stockage des secrets",
+                severity=Severity.WARNING,
+                message="Fichier .env détecté (non chiffré)",
+                hint=(
+                    "Un .env est lisible par tout processus de l'utilisateur. "
+                    "Supprimez-le et configurez un coffre-fort : "
+                    "gateway-llm setup-secrets"
+                ),
+            ))
+            return
+
         cfg = _load_config()
         if cfg is None or "backend" not in cfg:
-            # Pas de config : détecte .env ou env vars
-            env_file = __import__("pathlib").Path(".env")
-            if env_file.exists():
-                report.add(CheckResult(
-                    name="Stockage des secrets",
-                    severity=Severity.WARNING,
-                    message="Fichier .env détecté (non chiffré)",
-                    hint=(
-                        "Un .env est lisible par tout processus. "
-                        "Lancez : llm-gateway setup-secrets"
-                    ),
-                ))
-                return
-
-            risky = [v for v in _CLOUD_API_ENV_VARS if os.environ.get(v)]
-            if risky:
-                report.add(CheckResult(
-                    name="Stockage des secrets",
-                    severity=Severity.WARNING,
-                    message=f"Variables d'env détectées : {', '.join(risky)}",
-                    hint="Préférez un coffre-fort : llm-gateway setup-secrets",
-                ))
-                return
-
             report.add(CheckResult(
                 name="Stockage des secrets",
                 severity=Severity.WARNING,
                 message="Aucun backend configuré",
-                hint="Lancez : llm-gateway setup-secrets",
+                hint="Lancez : gateway-llm setup-secrets",
             ))
             return
 
@@ -252,7 +231,7 @@ class Doctor:
                 name="Modèles Ollama",
                 severity=Severity.WARNING,
                 message=f"{len(missing)} manquant(s) : {', '.join(missing)}",
-                hint="Lancer : llm-gateway setup",
+                hint="Lancer : gateway-llm setup",
             ))
         else:
             report.add(CheckResult(

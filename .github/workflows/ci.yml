@@ -34,7 +34,7 @@ jobs:
           pip install -e ".[dev]"
 
       - name: Pytest
-        run: pytest tests/ -v --cov=llm_gateway --cov-report=term-missing
+        run: pytest tests/ -v --cov=gateway_llm --cov-report=term-missing
 
   test-guardrails:
     name: Tests avec NeMo Guardrails

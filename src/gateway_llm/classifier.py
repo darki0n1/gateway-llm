@@ -14,7 +14,7 @@ import logging
 import re
 from dataclasses import dataclass, field
 
-from llm_gateway.providers.base import Provider
+from gateway_llm.providers.base import Provider
 
 log = logging.getLogger(__name__)
 

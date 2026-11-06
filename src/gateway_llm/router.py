@@ -20,19 +20,19 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 
-from llm_gateway.benchmarks.aggregator import BenchmarkAggregator
-from llm_gateway.benchmarks.base import TaskCategory
-from llm_gateway.budget import BudgetTracker
-from llm_gateway.config import ModelsConfig, PolicyConfig
-from llm_gateway.guardrails.base import Guardrail, GuardrailResult
-from llm_gateway.hardware import HardwareInfo
-from llm_gateway.providers.base import (
+from gateway_llm.benchmarks.aggregator import BenchmarkAggregator
+from gateway_llm.benchmarks.base import TaskCategory
+from gateway_llm.budget import BudgetTracker
+from gateway_llm.config import ModelsConfig, PolicyConfig
+from gateway_llm.guardrails.base import Guardrail, GuardrailResult
+from gateway_llm.hardware import HardwareInfo
+from gateway_llm.providers.base import (
     Provider,
     ProviderError,
     ProviderUnavailableError,
     RateLimitError,
 )
-from llm_gateway.quota import QuotaManager
+from gateway_llm.quota import QuotaManager
 
 log = logging.getLogger(__name__)
 

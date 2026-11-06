@@ -5,8 +5,8 @@ import json
 
 import pytest
 
-from llm_gateway.classifier import DOMAINS, ClassificationResult, TaskClassifier
-from llm_gateway.providers.base import ProviderUnavailableError
+from gateway_llm.classifier import DOMAINS, ClassificationResult, TaskClassifier
+from gateway_llm.providers.base import ProviderUnavailableError
 
 from .helpers import FakeProvider, make_response
 

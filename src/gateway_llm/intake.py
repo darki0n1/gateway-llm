@@ -195,7 +195,7 @@ def intake_from_urls(
     ]
 
     tasks = []
-    headers = {"User-Agent": "llm-gateway-intake/0.1 (+https://github.com/<vous>/llm-gateway)"}
+    headers = {"User-Agent": "gateway-llm-intake/0.1 (+https://github.com/<vous>/gateway-llm)"}
     for i, url in enumerate(urls):
         if respect_robots and not _check_robots(url):
             log.warning("robots.txt interdit %s, skip", url)

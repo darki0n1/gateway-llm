@@ -9,17 +9,17 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from llm_gateway.providers.base import (
+from gateway_llm.providers.base import (
     ProviderUnavailableError,
     RateLimitError,
 )
-from llm_gateway.providers.cloudflare import CloudflareProvider
-from llm_gateway.providers.ollama import OllamaProvider
-from llm_gateway.providers.openai_compat import OpenAICompatibleProvider
+from gateway_llm.providers.cloudflare import CloudflareProvider
+from gateway_llm.providers.ollama import OllamaProvider
+from gateway_llm.providers.openai_compat import OpenAICompatibleProvider
 
 
 # ─── OpenAI-compatible (Groq / Mistral / OpenRouter / Google AI / NVIDIA) ──
-@patch("llm_gateway.providers.openai_compat.requests.post")
+@patch("gateway_llm.providers.openai_compat.requests.post")
 def test_openai_compat_success(mock_post):
     mock_post.return_value = MagicMock(
         status_code=200,
@@ -38,7 +38,7 @@ def test_openai_compat_success(mock_post):
     assert r.truncated is False
 
 
-@patch("llm_gateway.providers.openai_compat.requests.post")
+@patch("gateway_llm.providers.openai_compat.requests.post")
 def test_openai_compat_429(mock_post):
     mock_post.return_value = MagicMock(status_code=429)
     p = OpenAICompatibleProvider("test", "http://api", "key")
@@ -46,7 +46,7 @@ def test_openai_compat_429(mock_post):
         p.complete("m1", "prompt", max_tokens=100)
 
 
-@patch("llm_gateway.providers.openai_compat.requests.post")
+@patch("gateway_llm.providers.openai_compat.requests.post")
 def test_openai_compat_404(mock_post):
     mock_post.return_value = MagicMock(
         status_code=404,
@@ -57,7 +57,7 @@ def test_openai_compat_404(mock_post):
         p.complete("nonexistent", "prompt", max_tokens=100)
 
 
-@patch("llm_gateway.providers.openai_compat.requests.post")
+@patch("gateway_llm.providers.openai_compat.requests.post")
 def test_openai_compat_500(mock_post):
     mock_post.return_value = MagicMock(
         status_code=500,
@@ -68,7 +68,7 @@ def test_openai_compat_500(mock_post):
         p.complete("m1", "prompt", max_tokens=100)
 
 
-@patch("llm_gateway.providers.openai_compat.requests.post")
+@patch("gateway_llm.providers.openai_compat.requests.post")
 def test_openai_compat_malformed(mock_post):
     mock_post.return_value = MagicMock(
         status_code=200,
@@ -79,7 +79,7 @@ def test_openai_compat_malformed(mock_post):
         p.complete("m1", "prompt", max_tokens=100)
 
 
-@patch("llm_gateway.providers.openai_compat.requests.post")
+@patch("gateway_llm.providers.openai_compat.requests.post")
 def test_openai_compat_extra_headers(mock_post):
     mock_post.return_value = MagicMock(
         status_code=200,
@@ -98,7 +98,7 @@ def test_openai_compat_extra_headers(mock_post):
 
 
 # ─── Ollama ────────────────────────────────────────────────────
-@patch("llm_gateway.providers.ollama.requests.post")
+@patch("gateway_llm.providers.ollama.requests.post")
 def test_ollama_success(mock_post):
     mock_post.return_value = MagicMock(
         status_code=200,
@@ -117,7 +117,7 @@ def test_ollama_success(mock_post):
     assert r.truncated is False
 
 
-@patch("llm_gateway.providers.ollama.requests.post")
+@patch("gateway_llm.providers.ollama.requests.post")
 def test_ollama_truncation_detected(mock_post):
     mock_post.return_value = MagicMock(
         status_code=200,
@@ -133,7 +133,7 @@ def test_ollama_truncation_detected(mock_post):
     assert r.truncated is True
 
 
-@patch("llm_gateway.providers.ollama.requests.post")
+@patch("gateway_llm.providers.ollama.requests.post")
 def test_ollama_empty_response(mock_post):
     mock_post.return_value = MagicMock(
         status_code=200,
@@ -144,14 +144,14 @@ def test_ollama_empty_response(mock_post):
         p.complete("qwen", "prompt", max_tokens=100)
 
 
-@patch("llm_gateway.providers.ollama.requests.get")
+@patch("gateway_llm.providers.ollama.requests.get")
 def test_ollama_health_ok(mock_get):
     mock_get.return_value = MagicMock(status_code=200)
     p = OllamaProvider("ollama", "http://localhost:11434")
     assert p.health() is True
 
 
-@patch("llm_gateway.providers.ollama.requests.get")
+@patch("gateway_llm.providers.ollama.requests.get")
 def test_ollama_health_down(mock_get):
     import requests as req
     mock_get.side_effect = req.exceptions.ConnectionError("refused")
@@ -160,7 +160,7 @@ def test_ollama_health_down(mock_get):
 
 
 # ─── Cloudflare ────────────────────────────────────────────────
-@patch("llm_gateway.providers.cloudflare.requests.post")
+@patch("gateway_llm.providers.cloudflare.requests.post")
 def test_cloudflare_success(mock_post):
     mock_post.return_value = MagicMock(
         status_code=200,
@@ -175,7 +175,7 @@ def test_cloudflare_success(mock_post):
     assert r.provider == "cf"
 
 
-@patch("llm_gateway.providers.cloudflare.requests.post")
+@patch("gateway_llm.providers.cloudflare.requests.post")
 def test_cloudflare_429(mock_post):
     mock_post.return_value = MagicMock(status_code=429)
     p = CloudflareProvider(
@@ -185,7 +185,7 @@ def test_cloudflare_429(mock_post):
         p.complete("@cf/m", "prompt", max_tokens=100)
 
 
-@patch("llm_gateway.providers.cloudflare.requests.post")
+@patch("gateway_llm.providers.cloudflare.requests.post")
 def test_cloudflare_malformed(mock_post):
     mock_post.return_value = MagicMock(
         status_code=200, json=lambda: {"unexpected": "shape"},

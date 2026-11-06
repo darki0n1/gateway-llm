@@ -12,11 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""llm-gateway — Quality-Gated Batch Router."""
+"""gateway-llm — Quality-Gated Batch Router."""
 
-from llm_gateway.doctor import CheckResult, Doctor, DoctorReport, Severity
-from llm_gateway.installer import Installer
-from llm_gateway.config import (
+from gateway_llm.doctor import CheckResult, Doctor, DoctorReport, Severity
+from gateway_llm.installer import Installer
+from gateway_llm.config import (
     DomainChain,
     ModelConfig,
     ModelsConfig,
@@ -25,29 +25,29 @@ from llm_gateway.config import (
     load_config,
     load_policy,
 )
-from llm_gateway.guardrails.base import Guardrail, GuardrailResult
-from llm_gateway.guardrails.noop import NoOpGuardrail
-from llm_gateway.logging import configure as configure_logging
-from llm_gateway.providers.base import (
+from gateway_llm.guardrails.base import Guardrail, GuardrailResult
+from gateway_llm.guardrails.noop import NoOpGuardrail
+from gateway_llm.logging import configure as configure_logging
+from gateway_llm.providers.base import (
     Provider,
     ProviderError,
     ProviderResponse,
     ProviderUnavailableError,
     RateLimitError,
 )
-from llm_gateway.providers.cloudflare import CloudflareProvider
-from llm_gateway.providers.ollama import OllamaProvider
-from llm_gateway.providers.openai_compat import OpenAICompatibleProvider
-from llm_gateway.budget import BudgetSnapshot, BudgetTracker
-from llm_gateway.policy import PolicyConfig
-from llm_gateway.quota import QuotaManager
-from llm_gateway.router import Router, RoutingResult
-from llm_gateway.secrets import (
+from gateway_llm.providers.cloudflare import CloudflareProvider
+from gateway_llm.providers.ollama import OllamaProvider
+from gateway_llm.providers.openai_compat import OpenAICompatibleProvider
+from gateway_llm.budget import BudgetSnapshot, BudgetTracker
+from gateway_llm.policy import PolicyConfig
+from gateway_llm.quota import QuotaManager
+from gateway_llm.router import Router, RoutingResult
+from gateway_llm.secrets import (
     EnvSecretBackend,
     PowerShellVaultBackend,
     SecretBackend,
 )
-from llm_gateway.intake import (
+from gateway_llm.intake import (
     intake_from_csv, intake_from_folder, intake_from_text, intake_from_urls,
 )
 

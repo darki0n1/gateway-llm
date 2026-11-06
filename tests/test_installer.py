@@ -5,12 +5,12 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-from llm_gateway.installer import Installer
+from gateway_llm.installer import Installer
 
 
-@patch("llm_gateway.installer.shutil.which", return_value="/usr/bin/ollama")
-@patch("llm_gateway.installer.subprocess.Popen")
-@patch("llm_gateway.installer.requests.get")
+@patch("gateway_llm.installer.shutil.which", return_value="/usr/bin/ollama")
+@patch("gateway_llm.installer.subprocess.Popen")
+@patch("gateway_llm.installer.requests.get")
 def test_pull_success(mock_get, mock_popen, _which):
     # Simule la sortie de `ollama pull`
     mock_stdout = iter(["pulling...\n", "done\n"])
@@ -25,9 +25,9 @@ def test_pull_success(mock_get, mock_popen, _which):
     assert inst.pull_model("qwen3:4b")
 
 
-@patch("llm_gateway.installer.shutil.which", return_value="/usr/bin/ollama")
-@patch("llm_gateway.installer.subprocess.Popen")
-@patch("llm_gateway.installer.requests.get")
+@patch("gateway_llm.installer.shutil.which", return_value="/usr/bin/ollama")
+@patch("gateway_llm.installer.subprocess.Popen")
+@patch("gateway_llm.installer.requests.get")
 def test_pull_failure(mock_get, mock_popen, _which):
     mock_proc = MagicMock(
         stdout=iter([]), returncode=1, wait=MagicMock(),
@@ -37,7 +37,7 @@ def test_pull_failure(mock_get, mock_popen, _which):
     assert not inst.pull_model("qwen3:4b")
 
 
-@patch("llm_gateway.installer.shutil.which", return_value=None)
+@patch("gateway_llm.installer.shutil.which", return_value=None)
 def test_pull_no_binary(_which):
     inst = Installer(assume_yes=True)
     assert not inst.pull_model("qwen3:4b")
@@ -53,8 +53,8 @@ def test_ask_auto_yes():
     assert inst._ask("Continue ?")
 
 
-@patch("llm_gateway.installer.shutil.which", return_value="/usr/bin/ollama")
-@patch("llm_gateway.installer.requests.get")
+@patch("gateway_llm.installer.shutil.which", return_value="/usr/bin/ollama")
+@patch("gateway_llm.installer.requests.get")
 def test_ensure_models_no_missing(mock_get):
     mock_get.return_value = MagicMock(
         status_code=200,
@@ -63,9 +63,9 @@ def test_ensure_models_no_missing(mock_get):
     inst = Installer(assume_yes=True)
     assert inst.ensure_models(["qwen3:4b", "qwen3:8b"]) == 0
 
-@patch("llm_gateway.installer.shutil.which", return_value="/usr/bin/ollama")
-@patch("llm_gateway.installer.subprocess.Popen")
-@patch("llm_gateway.installer.requests.get")
+@patch("gateway_llm.installer.shutil.which", return_value="/usr/bin/ollama")
+@patch("gateway_llm.installer.subprocess.Popen")
+@patch("gateway_llm.installer.requests.get")
 def test_ensure_models_pulls_missing(mock_get, mock_popen, _which):
     # Premier GET (list) : un modèle présent
     # Deuxième GET (après pull) : deux modèles présents

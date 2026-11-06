@@ -7,26 +7,26 @@ from __future__ import annotations
 
 import pytest
 
-from llm_gateway.benchmarks.aggregator import BenchmarkAggregator
-from llm_gateway.benchmarks.base import BenchmarkResult, BenchmarkSource, TaskCategory
-from llm_gateway.benchmarks.cache import BenchmarkCache
-from llm_gateway.budget import BudgetTracker
-from llm_gateway.config import (
+from gateway_llm.benchmarks.aggregator import BenchmarkAggregator
+from gateway_llm.benchmarks.base import BenchmarkResult, BenchmarkSource, TaskCategory
+from gateway_llm.benchmarks.cache import BenchmarkCache
+from gateway_llm.budget import BudgetTracker
+from gateway_llm.config import (
     DomainChain,
     ModelConfig,
     ModelsConfig,
     PolicyConfig,
     ProviderConfig,
 )
-from llm_gateway.guardrails.base import Guardrail, GuardrailResult
-from llm_gateway.guardrails.noop import NoOpGuardrail
-from llm_gateway.hardware import HardwareInfo
-from llm_gateway.providers.base import (
+from gateway_llm.guardrails.base import Guardrail, GuardrailResult
+from gateway_llm.guardrails.noop import NoOpGuardrail
+from gateway_llm.hardware import HardwareInfo
+from gateway_llm.providers.base import (
     ProviderResponse,
     RateLimitError,
 )
-from llm_gateway.quota import QuotaManager
-from llm_gateway.router import Router
+from gateway_llm.quota import QuotaManager
+from gateway_llm.router import Router
 
 from .helpers import FakeProvider, make_response
 

@@ -12,8 +12,8 @@ import yaml
 from pydantic import BaseModel, Field, model_validator
 
 # PolicyConfig vit désormais dans policy.py ; on le ré-exporte pour
-# ne pas casser les imports existants (`from llm_gateway.config import PolicyConfig`).
-from llm_gateway.policy import PolicyConfig
+# ne pas casser les imports existants (`from gateway_llm.config import PolicyConfig`).
+from gateway_llm.policy import PolicyConfig
 
 __all__ = [
     "ProviderConfig", "ModelConfig", "DomainChain", "ModelsConfig",

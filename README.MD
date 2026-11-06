@@ -1,8 +1,8 @@
-# llm-gateway
+# gateway-llm
 
 > **Quality-Gated Batch Router** — Routage LLM par cascade, guardrails, budget maîtrisé, résidence des données respectée.
 
-[![CI](https://github.com/<vous>/llm-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/<vous>/llm-gateway/actions/workflows/ci.yml)
+[![CI](https://github.com/<vous>/gateway-llm/actions/workflows/ci.yml/badge.svg)](https://github.com/<vous>/gateway-llm/actions/workflows/ci.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue.svg)](https://www.python.org/)
 
@@ -18,14 +18,14 @@ Les gateways LLM existants (LiteLLM, OpenRouter, Portkey…) optimisent le routa
 - Le **budget** doit être planifié et arrêté proprement, pas découvert sur la facture.
 - Un batch sur laptop doit pouvoir **reprendre après une coupure**.
 
-`llm-gateway` répond à ces cinq besoins avec une thèse simple : **ne payer un modèle cher que lorsque le guardrail prouve qu'un modèle bon marché ne suffit pas**, et router selon des contraintes de souveraineté.
+`gateway-llm` répond à ces cinq besoins avec une thèse simple : **ne payer un modèle cher que lorsque le guardrail prouve qu'un modèle bon marché ne suffit pas**, et router selon des contraintes de souveraineté.
 
 ## Principes
 
 1. **Cascade par qualité** — la chaîne de modèles est ordonnée par benchmarks (meilleurs d'abord), les free trials en tête pour être drainés en priorité.
 2. **Guardrail en filtre final** — la vérification qualité (NeMo, NoOp) tourne **une fois** sur la première réponse réussie. Un guardrail en échec **termine** la chaîne et la tâche part en revue humaine. Il ne relance pas la cascade.
 3. **Benchmarks dynamiques** — les scores de BenchLM / RankLLMs / F5 / RWS peuvent réordonner la chaîne automatiquement (`--rank-by-benchmarks`).
-4. **Refresh automatique des benchmarks** — au démarrage d'un batch, si le cache a plus de 14 jours (configurable via `LLM_GATEWAY_BENCHMARK_TTL_DAYS`), il est rafraîchi automatiquement. Combiné au workflow GitHub Actions bi-hebdomadaire, l'utilisateur n'a jamais à lancer `benchmarks refresh` manuellement.
+4. **Refresh automatique des benchmarks** — au démarrage d'un batch, si le cache a plus de 14 jours (configurable via `gateway_llm_BENCHMARK_TTL_DAYS`), il est rafraîchi automatiquement. Combiné au workflow GitHub Actions bi-hebdomadaire, l'utilisateur n'a jamais à lancer `benchmarks refresh` manuellement.
 5. **Politique de résidence** — chaque tâche porte une sensibilité (`public`, `internal`, `confidential`) qui filtre les providers autorisés avant toute tentative.
 6. **Budget par lot** — un plafond optionnel (`--max-cost-eur`) arrête d'escalader quand il serait dépassé.
 7. **Checkpointing** — la sortie JSONL est écrite ligne par ligne avec `fsync`. `--resume` reprend après interruption.
@@ -34,9 +34,19 @@ Les gateways LLM existants (LiteLLM, OpenRouter, Portkey…) optimisent le routa
 
 ## Installation
 
+### Pour utiliser l'application
+
 ```bash
-git clone https://github.com/<vous>/llm-gateway.git
-cd llm-gateway
+pip install gateway-llm
+```
+Puis lancer : 
+```bash
+python -m gateway_llm.gui
+```
+
+```bash
+git clone https://github.com/<vous>/gateway-llm.git
+cd gateway-llm
 
 # Installation minimale (NoOpGuardrail par défaut, pas de backend cloud)
 pip install -e .
@@ -67,10 +77,10 @@ cp config/policy.example.yaml config/policy.yaml
 
 ### 2. Configuration des secrets
 
-Au premier lancement, `llm-gateway` exige un backend de secrets configuré. Aucune bascule silencieuse vers un `.env`.
+Au premier lancement, `gateway-llm` exige un backend de secrets configuré. Aucune bascule silencieuse vers un `.env`.
 
 ```bash
-llm-gateway setup-secrets
+gateway-llm setup-secrets
 ```
 
 Un assistant interactif vous propose :
@@ -79,23 +89,23 @@ Un assistant interactif vous propose :
 - **Machine d'entreprise** : HashiCorp Vault, AWS Secrets Manager, Azure Key Vault
 - **Fallback explicite** : variables d'environnement (averti comme non chiffré)
 
-Le choix est persisté dans `~/.llm-gateway/secrets.yaml`. Ce fichier ne contient **jamais** de secret final : seulement le nom du backend et ses options de connexion (URL, région, vault). Les clés API restent dans le coffre-fort natif (PowerShell SecretStore, 1Password, HashiCorp, AWS, Azure).
+Le choix est persisté dans `~/.gateway-llm/secrets.yaml`. Ce fichier ne contient **jamais** de secret final : seulement le nom du backend et ses options de connexion (URL, région, vault). Les clés API restent dans le coffre-fort natif (PowerShell SecretStore, 1Password, HashiCorp, AWS, Azure).
 
 ### 3. Diagnostic et installation des modèles
 
 ```bash
 # Vérifie deps Python, binaire Ollama, daemon, modèles locaux, stockage secrets
-llm-gateway doctor --config config/models.yaml
+gateway-llm doctor --config config/models.yaml
 
 # Télécharge les modèles Ollama manquants (interactif)
-llm-gateway setup --config config/models.yaml
+gateway-llm setup --config config/models.yaml
 ```
 
 ### 4. Lancer un batch
 
 ```bash
 # Depuis la racine du projet
-llm-gateway batch run \
+gateway-llm batch run \
   --input prompts.jsonl \
   --output results.jsonl \
   --config config/models.yaml \
@@ -120,7 +130,7 @@ Sortie enrichie `results.jsonl` :
 ### 5. Estimer avant de lancer (dry-run)
 
 ```bash
-llm-gateway batch run --input prompts.jsonl --dry-run --sample 20
+gateway-llm batch run --input prompts.jsonl --dry-run --sample 20
 ```
 
 Extrapole le coût total et le temps d'exécution **sans appeler** les modèles.
@@ -128,7 +138,7 @@ Extrapole le coût total et le temps d'exécution **sans appeler** les modèles.
 ### 6. Reprendre après interruption
 
 ```bash
-llm-gateway batch run --input prompts.jsonl --output results.jsonl --resume
+gateway-llm batch run --input prompts.jsonl --output results.jsonl --resume
 ```
 
 Saute les IDs déjà présents dans `results.jsonl`.
@@ -136,7 +146,7 @@ Saute les IDs déjà présents dans `results.jsonl`.
 ### 7. Rafraîchir les benchmarks manuellement (optionnel)
 
 ```bash
-llm-gateway benchmarks refresh
+gateway-llm benchmarks refresh
 ```
 
 Récupère les derniers scores de BenchLM et RankLLMs. En pratique, rarement nécessaire : le refresh lazy (démarrage de batch) et le workflow GitHub Actions le font automatiquement.
@@ -145,10 +155,10 @@ Récupère les derniers scores de BenchLM et RankLLMs. En pratique, rarement né
 
 | Commande | Description |
 | :--- | :--- |
-| `llm-gateway doctor` | Diagnostic de l'environnement (deps, Ollama, secrets) |
-| `llm-gateway setup` | Installation guidée des modèles Ollama manquants |
-| `llm-gateway setup-secrets` | Choisir et configurer le backend de secrets |
-| `llm-gateway batch run --input ... --output ...` | Lance un batch |
+| `gateway-llm doctor` | Diagnostic de l'environnement (deps, Ollama, secrets) |
+| `gateway-llm setup` | Installation guidée des modèles Ollama manquants |
+| `gateway-llm setup-secrets` | Choisir et configurer le backend de secrets |
+| `gateway-llm batch run --input ... --output ...` | Lance un batch |
 | `--resume` | Reprend un batch interrompu |
 | `--dry-run --sample N` | Estime sans appeler |
 | `--refresh-benchmarks` | Force le rafraîchissement immédiat |
@@ -156,11 +166,11 @@ Récupère les derniers scores de BenchLM et RankLLMs. En pratique, rarement né
 | `--max-cost-eur X` | Budget maximal en euros |
 | `--no-classifier` | Désactive la classification automatique |
 | `--classifier-model NAME` | Modèle Ollama de classification |
-| `llm-gateway intake from-folder` | Dossier d'images → JSONL |
-| `llm-gateway intake from-text` | Dossier de textes → JSONL |
-| `llm-gateway intake from-csv` | CSV → JSONL |
-| `llm-gateway intake from-urls` | URLs → JSONL (respecte robots.txt) |
-| `llm-gateway benchmarks refresh` | Force le rafraîchissement du cache |
+| `gateway-llm intake from-folder` | Dossier d'images → JSONL |
+| `gateway-llm intake from-text` | Dossier de textes → JSONL |
+| `gateway-llm intake from-csv` | CSV → JSONL |
+| `gateway-llm intake from-urls` | URLs → JSONL (respecte robots.txt) |
+| `gateway-llm benchmarks refresh` | Force le rafraîchissement du cache |
 
 ## Backends de secrets supportés
 
@@ -187,7 +197,7 @@ Le champ `image_path` dans le JSONL d'entrée pointe vers un fichier local, ou `
 ## Architecture
 
 ```
-llm-gateway/
+gateway-llm/
 ├── pyproject.toml
 ├── README.md · LICENSE · .gitignore
 ├── benchmarks_cache/           # caches BenchLM/RankLLMs (gitignored)
@@ -195,7 +205,7 @@ llm-gateway/
 ├── config/
 │   ├── models.example.yaml     # providers, modèles, chaînes par domaine
 │   └── policy.example.yaml     # politique de résidence
-├── src/llm_gateway/
+├── src/gateway_llm/
 │   ├── providers/              # base, openai_compat, ollama, cloudflare
 │   ├── guardrails/             # base, noop, nemo
 │   ├── benchmarks/             # base, benchlm, rankllms, f5, rws, cache, aggregator, normalizer
@@ -256,7 +266,7 @@ Aucune variable module-level mutable. Chaque instance est injectée explicitemen
 Pour les utilisateurs non techniques :
 
 ```bash
-python -m llm_gateway.gui
+python -m gateway_llm.gui
 ```
 
 Quatre onglets :
@@ -270,7 +280,7 @@ Quatre onglets :
 
 ```bash
 pytest
-pytest -v --cov=llm_gateway
+pytest -v --cov=gateway_llm
 ```
 
 La CI GitHub Actions exécute :

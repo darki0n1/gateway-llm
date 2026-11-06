@@ -12,7 +12,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from typing import Callable
 
-from llm_gateway.intake import (
+from gateway_llm.intake import (
     intake_from_csv,
     intake_from_folder,
     intake_from_text,
@@ -265,9 +265,9 @@ class RunTab(ttk.Frame):
 
         def worker() -> None:
             try:
-                from llm_gateway.batch import BatchRunner
-                from llm_gateway.config import load_config
-                from llm_gateway.hardware import detect_vram
+                from gateway_llm.batch import BatchRunner
+                from gateway_llm.config import load_config
+                from gateway_llm.hardware import detect_vram
 
                 config = load_config(cfg)
                 hw = detect_vram()
@@ -512,7 +512,7 @@ class ResultsTab(ttk.Frame):
 class App(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
-        self.title("llm-gateway — Traitement par lot")
+        self.title("gateway-llm — Traitement par lot")
         self.geometry("900x650")
 
         notebook = ttk.Notebook(self)
@@ -532,7 +532,7 @@ class App(tk.Tk):
         notebook.add(self.results_tab, text="3. Voir les résultats")
 
         # Au premier lancement, ouvrir directement l'onglet Configuration
-        config_file = pathlib.Path.home() / ".llm-gateway" / "secrets.yaml"
+        config_file = pathlib.Path.home() / ".gateway-llm" / "secrets.yaml"
         if not config_file.exists():
             notebook.select(self.secrets_tab)
             messagebox.showinfo(
@@ -577,7 +577,7 @@ class SecretsTab(ttk.Frame):
                   foreground="gray").pack(anchor="w", pady=(8, 0))
 
     def _save(self) -> None:
-        from llm_gateway.secrets import save_backend_config
+        from gateway_llm.secrets import save_backend_config
         backend = self.backend_var.get()
         options = {}  # à enrichir avec champs si HashiCorp/AWS/Azure
         save_backend_config(backend, options)
@@ -585,7 +585,7 @@ class SecretsTab(ttk.Frame):
 
     def _test(self) -> None:
         try:
-            from llm_gateway.secrets import get_backend
+            from gateway_llm.secrets import get_backend
             b = get_backend()
             ok = b.is_available()
             self.status_var.set(

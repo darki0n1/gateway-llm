@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import pytest
 
-from llm_gateway.config import (
+from gateway_llm.config import (
     DomainChain,
     ModelConfig,
     ModelsConfig,

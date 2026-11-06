@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Amandine Dennieau
 # SPDX-License-Identifier: Apache-2.0
 
-"""Point d'entrée CLI de llm-gateway."""
+"""Point d'entrée CLI de gateway-llm."""
 
 from __future__ import annotations
 
@@ -10,21 +10,21 @@ import logging
 import pathlib
 import sys
 
-from llm_gateway import __version__
-from llm_gateway.benchmarks.aggregator import BenchmarkAggregator
-from llm_gateway.benchmarks.base import TaskCategory
-from llm_gateway.benchmarks.benchlm import BenchLMAdapter
-from llm_gateway.benchmarks.f5_safety import F5SafetyAdapter
-from llm_gateway.benchmarks.rankllms import RankLLMsAdapter
-from llm_gateway.benchmarks.rws_translation import RWSTranslationAdapter
-from llm_gateway.classifier import TaskClassifier
-from llm_gateway.config import load_config, load_policy
-from llm_gateway.doctor import Doctor
-from llm_gateway.hardware import detect_vram
-from llm_gateway.installer import Installer
-from llm_gateway.logging import configure as configure_logging
+from gateway_llm import __version__
+from gateway_llm.benchmarks.aggregator import BenchmarkAggregator
+from gateway_llm.benchmarks.base import TaskCategory
+from gateway_llm.benchmarks.benchlm import BenchLMAdapter
+from gateway_llm.benchmarks.f5_safety import F5SafetyAdapter
+from gateway_llm.benchmarks.rankllms import RankLLMsAdapter
+from gateway_llm.benchmarks.rws_translation import RWSTranslationAdapter
+from gateway_llm.classifier import TaskClassifier
+from gateway_llm.config import load_config, load_policy
+from gateway_llm.doctor import Doctor
+from gateway_llm.hardware import detect_vram
+from gateway_llm.installer import Installer
+from gateway_llm.logging import configure as configure_logging
 
-log = logging.getLogger("llm_gateway.cli")
+log = logging.getLogger("gateway_llm.cli")
 
 
 # ─── Helpers ────────────────────────────────────────────────────
@@ -128,44 +128,48 @@ def cmd_setup(args: argparse.Namespace) -> int:
     return 0
 
 def cmd_setup_secrets(args: argparse.Namespace) -> int:
-    from llm_gateway.secrets import _BACKEND_FACTORIES, save_backend_config
+    from gateway_llm.secrets import get_backend, save_backend_config
 
     print("\n=== Configuration des secrets ===\n")
     print("Sur quelle machine travaillez-vous ?")
     print("  1) Machine personnelle (Windows / Mac / Linux)")
     print("  2) Machine d'entreprise (Windows / Mac / Linux)")
-    print("  3) Cloud (AWS, Azure, GCP)")
+    print("  3) Cloud (AWS, Azure)")
+    print("  4) CI/CD (variables d'environnement)")
 
-    choice = input("\nVotre choix [1-3] : ").strip()
+    choice = input("\nVotre choix [1-4] : ").strip()
 
     if choice == "1":
         print("\nCoffres disponibles :")
         print("  a) PowerShell Vault (Windows, recommandé)")
         print("  b) 1Password CLI (Mac / Linux / Windows)")
-        print("  c) Fichier chiffré local (via cryptography, mot de passe maître)")
-        sub = input("Choix [a-c] : ").strip()
+        sub = input("Choix [a-b] : ").strip().lower()
 
         if sub == "a":
             backend = "powershell_vault"
             options = {}
-            print("\nInstructions :")
+            print("\nInstructions PowerShell (à lancer une fois dans un terminal) :")
             print("  Install-Module Microsoft.PowerShell.SecretManagement -Scope CurrentUser")
             print("  Install-Module Microsoft.PowerShell.SecretStore -Scope CurrentUser")
-            print("  Register-SecretVault -Name LocalVault -ModuleName Microsoft.PowerShell.SecretStore -DefaultVault")
+            print("  Register-SecretVault -Name LocalVault "
+                  "-ModuleName Microsoft.PowerShell.SecretStore -DefaultVault")
         elif sub == "b":
             backend = "1password"
-            vault = input("Nom du vault 1Password (défaut: Private) : ").strip() or "Private"
+            vault = input(
+                "Nom du vault 1Password (défaut: Private) : "
+            ).strip() or "Private"
             options = {"vault": vault}
         else:
-            backend = "local_encrypted"
-            options = {}
-            print("\n⚠️  Backend local chiffré : vous devrez saisir un mot de passe à chaque batch.")
+            print("❌ Choix invalide.")
+            return 1
+
     elif choice == "2":
         print("\nCoffres entreprise :")
         print("  a) HashiCorp Vault")
         print("  b) AWS Secrets Manager")
         print("  c) Azure Key Vault")
-        sub = input("Choix [a-c] : ").strip()
+        sub = input("Choix [a-c] : ").strip().lower()
+
         if sub == "a":
             backend = "hashicorp_vault"
             options = {
@@ -176,68 +180,109 @@ def cmd_setup_secrets(args: argparse.Namespace) -> int:
         elif sub == "b":
             backend = "aws_secrets_manager"
             options = {
-                "region": input("Région AWS (défaut: us-east-1) : ").strip() or "us-east-1",
-                "prefix": input("Préfixe (défaut: llm-gateway/) : ").strip() or "llm-gateway/",
+                "region": input(
+                    "Région AWS (défaut: us-east-1) : "
+                ).strip() or "us-east-1",
+                "prefix": input(
+                    "Préfixe (défaut: gateway-llm/) : "
+                ).strip() or "gateway-llm/",
             }
-        else:
+        elif sub == "c":
             backend = "azure_key_vault"
             options = {"vault_url": input("URL du Key Vault : ").strip()}
-    else:
-        backend = "aws_secrets_manager"
-        options = {}
+        else:
+            print("❌ Choix invalide.")
+            return 1
 
-    # Vérifie que les dépendances du backend choisi sont installées
-    from llm_gateway.secrets import missing_requirements
-    missing = missing_requirements(backend)
-    if missing:
+    elif choice == "3":
+        print("\nCoffres cloud :")
+        print("  a) AWS Secrets Manager")
+        print("  b) Azure Key Vault")
+        sub = input("Choix [a-b] : ").strip().lower()
+
+        if sub == "a":
+            backend = "aws_secrets_manager"
+            options = {
+                "region": input(
+                    "Région AWS (défaut: us-east-1) : "
+                ).strip() or "us-east-1",
+                "prefix": input(
+                    "Préfixe (défaut: gateway-llm/) : "
+                ).strip() or "gateway-llm/",
+            }
+        elif sub == "b":
+            backend = "azure_key_vault"
+            options = {"vault_url": input("URL du Key Vault : ").strip()}
+        else:
+            print("❌ Choix invalide.")
+            return 1
+
+    elif choice == "4":
         print(
-            f"\n⚠️  Le backend '{backend}' nécessite le package pip :\n"
-            f"    pip install {missing}\n"
-            f"    (ou pip install -e \".[azure]\" / .[aws] si installé depuis le repo)"
+            "\n⚠️  Variables d'environnement : les clés seront lues depuis "
+            "des variables définies dans le shell ou par la plateforme CI.\n"
+            "    Ce mode est déconseillé pour un usage quotidien "
+            "(variables visibles par les autres processus du même utilisateur).\n"
+            "    Recommandé uniquement pour CI/CD (GitHub Actions, GitLab, etc.)."
         )
-        cont = input("Continuer quand même ? [y/N] ").strip().lower()
+        cont = input("Continuer ? [y/N] : ").strip().lower()
         if cont not in ("y", "yes"):
             print("Abandon.")
             return 0
+        backend = "env"
+        options = {}
+
+    else:
+        print("❌ Choix invalide.")
+        return 1
 
     save_backend_config(backend, options)
 
     # Test immédiat
     print("\nTest du backend…")
     try:
-        from llm_gateway.secrets import get_backend
         b = get_backend()
         if b.is_available():
             print(f"✅ Backend '{b.name}' opérationnel.")
         else:
             print(
                 f"⚠️  Backend '{b.name}' enregistré mais non disponible.\n"
-                f"    Causes possibles : package pip manquant, credentials invalides, "
-                f"réseau, ou URL mal configurée."
+                f"    Causes possibles : credentials invalides, réseau, "
+                f"ou URL mal configurée."
             )
     except Exception as e:
         print(f"❌ Erreur : {e}")
         return 1
 
-    # Demande de saisie des clés requises
-    print("\nSaisie des clés API (laisser vide pour ignorer) :")
-    setter = getattr(b, "set", None)
-    for key in [
-        "GROQ_API_KEY", "MISTRAL_API_KEY", "OPENROUTER_API_KEY",
-        "GOOGLE_API_KEY", "NVIDIA_API_KEY",
-        "CLOUDFLARE_API_KEY", "CLOUDFLARE_ACCOUNT_ID",
-    ]:
-        val = input(f"  {key} : ").strip()
-        if not val:
-            continue
-        if setter is None:
-            print(f"    ⚠️  Ce backend ne supporte pas l'écriture programmatique.")
-            print(f"    → Ajoutez '{key}' manuellement dans votre coffre-fort.")
-            continue
-        if setter(key, val):
-            print(f"    ✓ {key} enregistrée")
-        else:
-            print(f"    ⚠️  Échec écriture {key}")
+    # Saisie des clés API (sauf backend env, où les clés sont déjà dans le shell)
+    if backend != "env":
+        print("\nSaisie des clés API (laisser vide pour ignorer) :")
+        setter = getattr(b, "set", None)
+        for key in [
+            "GROQ_API_KEY", "MISTRAL_API_KEY", "OPENROUTER_API_KEY",
+            "GOOGLE_API_KEY", "NVIDIA_API_KEY",
+            "CLOUDFLARE_API_KEY", "CLOUDFLARE_ACCOUNT_ID",
+        ]:
+            val = input(f"  {key} : ").strip()
+            if not val:
+                continue
+            if setter is None:
+                print("    ⚠️  Ce backend ne supporte pas l'écriture programmatique.")
+                print(f"    → Ajoutez '{key}' manuellement dans votre coffre-fort.")
+                continue
+            if setter(key, val):
+                print(f"    ✓ {key} enregistrée")
+            else:
+                print(f"    ⚠️  Échec écriture {key}")
+    else:
+        print(
+            "\n💡 Rappel : exportez vos clés dans le shell avant de lancer "
+            "le batch :\n"
+            "    export GROQ_API_KEY=gsk_xxx\n"
+            "    export MISTRAL_API_KEY=xxx\n"
+            "    (ou définissez-les dans votre workflow CI)"
+        )
+
     print("\n✅ Configuration terminée.")
     return 0
 
@@ -252,7 +297,7 @@ def cmd_benchmarks_refresh(args: argparse.Namespace) -> int:
 
 
 def cmd_intake(args: argparse.Namespace) -> int:
-    from llm_gateway import intake as m
+    from gateway_llm import intake as m
 
     if args.intake_cmd == "from-folder":
         n = m.intake_from_folder(
@@ -309,7 +354,7 @@ def cmd_batch_run(args: argparse.Namespace) -> int:
 
     classifier: TaskClassifier | None = None
 
-    from llm_gateway.batch import BatchRunner
+    from gateway_llm.batch import BatchRunner
     runner = BatchRunner(
         config=cfg,
         policy=policy,
@@ -338,27 +383,27 @@ Commandes disponibles :
   batch        Traiter un lot de tâches
 
 Exemples rapides :
-  llm-gateway doctor
+  gateway-llm doctor
       Vérifie que tout est en place.
 
-  llm-gateway setup --config config/models.yaml
+  gateway-llm setup --config config/models.yaml
       Télécharge les modèles Ollama manquants.
 
-  llm-gateway intake from-folder --path ./screenshots --output tasks.jsonl
+  gateway-llm intake from-folder --path ./screenshots --output tasks.jsonl
       Convertit un dossier d'images en fichier de tâches.
 
-  llm-gateway batch run --input tasks.jsonl --output results.jsonl \\
+  gateway-llm batch run --input tasks.jsonl --output results.jsonl \\
       --config config/models.yaml
       Lance le traitement.
 
-  llm-gateway batch run ... --dry-run
+  gateway-llm batch run ... --dry-run
       Estime le coût sans appeler les modèles.
 
-  llm-gateway batch run ... --resume
+  gateway-llm batch run ... --resume
       Reprend après une interruption.
 
-Pour l'aide détaillée d'une commande : llm-gateway <commande> --help
-Documentation : https://github.com/<vous>/llm-gateway
+Pour l'aide détaillée d'une commande : gateway-llm <commande> --help
+Documentation : https://github.com/<vous>/gateway-llm
 """
 
 
@@ -366,22 +411,33 @@ def _epilog_for(cmd: str) -> str:
     return {
         "doctor": """\
 Exemples :
-  llm-gateway doctor
-  llm-gateway doctor --config config/models.yaml
+  gateway-llm doctor
+  gateway-llm doctor --config config/models.yaml
 
 Sortie :
-  ✓ / ⚠ / ✗ par item (deps Python, binaire Ollama, daemon, modèles).
+  ✓ / ⚠ / ✗ par item (deps Python, binaire Ollama, daemon, modèles, secrets).
   Code retour 1 si erreurs critiques, 0 sinon.
 """,
         "setup": """\
 Exemples :
-  llm-gateway setup --config config/models.yaml
+  gateway-llm setup --config config/models.yaml
       Interactif : demande confirmation avant chaque pull.
 
-  llm-gateway setup --config config/models.yaml --yes
+  gateway-llm setup --config config/models.yaml --yes
       Non-interactif : installe tout ce qui manque.
 
 Le fichier config doit déclarer au moins un provider de type 'ollama'.
+""",
+        "setup-secrets": """\
+Assistant interactif pour choisir et configurer un backend de secrets :
+
+  - Machine personnelle : PowerShell Vault (Windows) ou 1Password
+  - Machine d'entreprise : HashiCorp Vault, AWS Secrets Manager,
+    ou Azure Key Vault
+  - CI/CD : variables d'environnement (déconseillé en usage quotidien,
+    recommandé en CI)
+
+Le choix est persisté dans ~/.gateway-llm/secrets.yaml (hors repo).
 """,
         "intake": """\
 Sous-commandes :
@@ -391,19 +447,18 @@ Sous-commandes :
   from-urls      Une tâche par URL (respecte robots.txt par défaut)
 
 Exemples :
-  llm-gateway intake from-folder --path ./screenshots --output tasks.jsonl
-  llm-gateway intake from-text --path ./emails --output tasks.jsonl
-  llm-gateway intake from-csv --path ./tickets.csv --column description --output tasks.jsonl
-  llm-gateway intake from-urls --path ./urls.txt --output tasks.jsonl
-
-Aucune édition manuelle de JSONL n'est nécessaire.
+  gateway-llm intake from-folder --path ./screenshots --output tasks.jsonl
+  gateway-llm intake from-text --path ./emails --output tasks.jsonl
+  gateway-llm intake from-csv --path ./tickets.csv --column description --output tasks.jsonl
+  gateway-llm intake from-urls --path ./urls.txt --output tasks.jsonl
 """,
         "benchmarks": """\
 Sous-commandes :
   refresh    Force le rafraîchissement du cache BenchLM + RankLLMs
 
 Le cache local a un TTL de 24h. `batch run --refresh-benchmarks` force
-aussi un refresh au démarrage.
+aussi un refresh au démarrage. Le refresh lazy tourne automatiquement
+au démarrage d'un batch si le cache a plus de 14 jours.
 """,
         "batch": """\
 Sous-commandes :
@@ -425,18 +480,13 @@ Options principales de `batch run` :
   --no-install               Pre-flight sans installation auto
   --yes, -y                  Auto-confirme toutes les installations
   --verbose, -v              Logs DEBUG
-
-Exemples :
-  llm-gateway batch run --input t.jsonl --output r.jsonl --config config/models.yaml
-  llm-gateway batch run --input t.jsonl --output r.jsonl --config config/models.yaml --dry-run
-  llm-gateway batch run --input t.jsonl --output r.jsonl --config config/models.yaml --resume --max-cost-eur 5.0
 """,
     }.get(cmd, "")
 
 
 def _make_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        prog="llm-gateway",
+        prog="gateway-llm",
         description=(
             "Quality-Gated Batch Router — routage LLM par cascade, "
             "guardrails, budget et résidence des données."

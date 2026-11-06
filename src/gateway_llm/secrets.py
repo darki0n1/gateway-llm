@@ -5,11 +5,10 @@
 
 Aucune bascule silencieuse : le backend est choisi EXPLICITEMENT par
 l'utilisateur (CLI setup-secrets ou GUI Configuration) et mémorisé
-dans un fichier de config local (~/.llm-gateway/secrets.yaml).
+dans un fichier de config local (~/.gateway-llm/secrets.yaml).
 
-Les dépendances cloud (azure, boto3) sont OPTIONNELLES et importées
-à la demande, à l'intérieur des méthodes. Aucun import au niveau module
-pour éviter de casser `import llm_gateway.secrets` si elles sont absentes.
+Backends supportés : PowerShell Vault, 1Password, HashiCorp Vault,
+AWS Secrets Manager, Azure Key Vault, Variables d'environnement.
 """
 
 from __future__ import annotations
@@ -25,7 +24,7 @@ import yaml
 
 log = logging.getLogger(__name__)
 
-_CONFIG_PATH = pathlib.Path.home() / ".llm-gateway" / "secrets.yaml"
+_CONFIG_PATH = pathlib.Path.home() / ".gateway-llm" / "secrets.yaml"
 
 
 class SecretBackend(ABC):
@@ -138,7 +137,7 @@ class HashiCorpVaultBackend(SecretBackend):
         try:
             import requests
             r = requests.get(
-                f"{self._url}/v1/{self._mount}/data/llm-gateway",
+                f"{self._url}/v1/{self._mount}/data/gateway-llm",
                 headers={"X-Vault-Token": self._token},
                 timeout=10,
             )
@@ -158,7 +157,7 @@ class HashiCorpVaultBackend(SecretBackend):
 class AWSSecretsManagerBackend(SecretBackend):
     name = "aws_secrets_manager"
 
-    def __init__(self, region: str = "us-east-1", prefix: str = "llm-gateway/") -> None:
+    def __init__(self, region: str = "us-east-1", prefix: str = "gateway-llm/") -> None:
         self._region = region
         self._prefix = prefix
         self._client = None
@@ -211,8 +210,6 @@ class AzureKeyVaultBackend(SecretBackend):
     def is_available(self) -> bool:
         try:
             client = self._get_client()
-            # Vraie requête réseau : list_properties_of_secrets() lève
-            # si le vault est injoignable ou si les credentials sont invalides.
             next(client.list_properties_of_secrets(), None)
             return True
         except Exception:
@@ -223,7 +220,6 @@ class AzureKeyVaultBackend(SecretBackend):
             return self._cache[key]
         try:
             client = self._get_client()
-            # Azure KV n'accepte pas "_" dans les noms
             azure_key = key.replace("_", "-")
             secret = client.get_secret(azure_key)
             self._cache[key] = secret.value
@@ -259,7 +255,7 @@ class OnePasswordBackend(SecretBackend):
             return self._cache[key]
         try:
             r = subprocess.run(
-                ["op", "read", f"op://{self._vault}/llm-gateway/{key}"],
+                ["op", "read", f"op://{self._vault}/gateway-llm/{key}"],
                 capture_output=True, text=True, timeout=10,
             )
             if r.returncode != 0:
@@ -272,8 +268,15 @@ class OnePasswordBackend(SecretBackend):
             return None
 
 
-# ─── Fallback : variables d'environnement (opt-in explicite) ──
+# ─── Variables d'environnement (opt-in explicite, déconseillé) ─
 class EnvSecretBackend(SecretBackend):
+    """Lit les secrets depuis les variables d'environnement du processus.
+
+    Déconseillé en usage quotidien (les variables d'env sont visibles par
+    les autres processus du même utilisateur et peuvent fuiter via les
+    logs). Utile en CI/CD où les variables sont injectées par la plateforme.
+    """
+
     name = "env"
 
     def is_available(self) -> bool:
@@ -290,21 +293,11 @@ _BACKEND_FACTORIES = {
         c["url"], c["token"], c.get("mount", "secret"),
     ),
     "aws_secrets_manager": lambda c: AWSSecretsManagerBackend(
-        c.get("region", "us-east-1"), c.get("prefix", "llm-gateway/"),
+        c.get("region", "us-east-1"), c.get("prefix", "gateway-llm/"),
     ),
     "azure_key_vault": lambda c: AzureKeyVaultBackend(c["vault_url"]),
     "1password": lambda c: OnePasswordBackend(c.get("vault", "Private")),
     "env": lambda c: EnvSecretBackend(),
-}
-
-# Mapping backend → nom du package pip à installer si manquant.
-_BACKEND_REQUIREMENTS = {
-    "hashicorp_vault": None,   # utilise requests (déjà installé)
-    "aws_secrets_manager": "boto3",
-    "azure_key_vault": "azure-identity azure-keyvault-secrets",
-    "1password": None,         # utilise le binaire `op` (à installer séparément)
-    "powershell_vault": None,  # utilise PowerShell natif
-    "env": None,
 }
 
 
@@ -323,7 +316,7 @@ def get_backend() -> SecretBackend:
     if cfg is None or "backend" not in cfg:
         raise RuntimeError(
             "Aucun backend de secrets configuré.\n"
-            "Lancez : llm-gateway setup-secrets\n"
+            "Lancez : gateway-llm setup-secrets\n"
             "Ou ouvrez l'onglet Configuration de la GUI."
         )
     backend_name = cfg["backend"]
@@ -344,20 +337,3 @@ def save_backend_config(backend_name: str, options: dict) -> None:
         encoding="utf-8",
     )
     log.info("Backend '%s' enregistré dans %s", backend_name, _CONFIG_PATH)
-
-
-def missing_requirements(backend_name: str) -> str | None:
-    """Retourne le nom du package pip manquant, ou None si tout est installé.
-
-    Utilisé par `setup-secrets` pour avertir l'utilisateur avant qu'il
-    choisisse un backend dont les dépendances ne sont pas installées.
-    """
-    req = _BACKEND_REQUIREMENTS.get(backend_name)
-    if req is None:
-        return None
-    pkg = req.split()[0]
-    try:
-        __import__(pkg.replace("-", "_"))
-        return None
-    except ImportError:
-        return req

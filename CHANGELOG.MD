@@ -11,16 +11,16 @@ _(Rien pour l'instant — les prochaines évolutions seront ajoutées ici.)_
 
 ## [0.1.0] - 2026-01-01
 
-Première version publique de `llm-gateway`, après refactorisation complète
+Première version publique de `gateway-llm`, après refactorisation complète
 du projet initial (`pipeline/`, `process_batch.py` de 880 lignes).
 
 ### Added
 
 #### Architecture
 
-- Package Python installable (`src/llm_gateway/`, `pyproject.toml` avec hatchling).
+- Package Python installable (`src/gateway_llm/`, `pyproject.toml` avec hatchling).
 - Layout `src/` pour éviter les imports accidentels et supprimer les `sys.path.insert` dans les tests.
-- Exports publics centralisés dans `llm_gateway/__init__.py`.
+- Exports publics centralisés dans `gateway_llm/__init__.py`.
 
 #### Providers
 
@@ -50,7 +50,7 @@ du projet initial (`pipeline/`, `process_batch.py` de 880 lignes).
 - `BenchmarkCache` avec TTL 24h et refetch forcé.
 - `BenchmarkAggregator` avec fusion multi-sources (moyenne) et re-ranking des chaînes.
 - `normalize_model_name()` et `fuzzy_match()` pour appariement automatique des noms de modèles sans table d'alias manuelle.
-- **Refresh lazy au démarrage d'un batch** : si le cache a plus de 14 jours (`LLM_GATEWAY_BENCHMARK_TTL_DAYS`), il est rafraîchi automatiquement.
+- **Refresh lazy au démarrage d'un batch** : si le cache a plus de 14 jours (`gateway_llm_BENCHMARK_TTL_DAYS`), il est rafraîchi automatiquement.
 - Workflow GitHub Actions `.github/workflows/update-benchmarks.yml` pour mise à jour bi-hebdomadaire des caches F5 et RWS.
 
 #### Secrets
@@ -63,11 +63,11 @@ du projet initial (`pipeline/`, `process_batch.py` de 880 lignes).
   - `AWSSecretsManagerBackend` (cloud AWS)
   - `AzureKeyVaultBackend` (cloud Azure)
   - `EnvSecretBackend` (fallback explicite, déconseillé)
-- Imports cloud **lazy** : `import llm_gateway.secrets` fonctionne sans `boto3` ni `azure`.
+- Imports cloud **lazy** : `import gateway_llm.secrets` fonctionne sans `boto3` ni `azure`.
 - `get_backend()` avec résolution explicite (aucune bascule silencieuse vers `.env`).
-- `save_backend_config()` qui persiste le choix dans `~/.llm-gateway/secrets.yaml` (hors repo, non commité).
+- `save_backend_config()` qui persiste le choix dans `~/.gateway-llm/secrets.yaml` (hors repo, non commité).
 - `missing_requirements()` qui détecte les packages pip manquants avant que l'utilisateur ne choisisse un backend.
-- Commande CLI `llm-gateway setup-secrets` avec assistant interactif (machine perso / entreprise / cloud).
+- Commande CLI `gateway-llm setup-secrets` avec assistant interactif (machine perso / entreprise / cloud).
 
 #### Classification
 
@@ -87,17 +87,17 @@ du projet initial (`pipeline/`, `process_batch.py` de 880 lignes).
 - `intake_from_text` : dossier de fichiers texte → JSONL.
 - `intake_from_csv` : colonne CSV → JSONL.
 - `intake_from_urls` : liste d'URLs → JSONL, avec vérification `robots.txt` par défaut.
-- Commande CLI `llm-gateway intake from-folder|from-text|from-csv|from-urls`.
+- Commande CLI `gateway-llm intake from-folder|from-text|from-csv|from-urls`.
 
 #### Diagnostic et installation
 
 - `Doctor` avec checks deps Python, binaire Ollama, daemon Ollama, modèles locaux, stockage des secrets.
 - `Installer` avec téléchargement `ollama pull` interactif ou automatique (`--yes`).
-- Commande CLI `llm-gateway doctor` et `llm-gateway setup`.
+- Commande CLI `gateway-llm doctor` et `gateway-llm setup`.
 
 #### Interface graphique
 
-- Application `tkinter` unifiée (`python -m llm_gateway.gui`) avec **4 onglets** :
+- Application `tkinter` unifiée (`python -m gateway_llm.gui`) avec **4 onglets** :
   1. Configuration (backend de secrets)
   2. Préparer les données (intake)
   3. Lancer le traitement (batch)
@@ -107,12 +107,12 @@ du projet initial (`pipeline/`, `process_batch.py` de 880 lignes).
 
 #### CLI
 
-- `llm-gateway doctor` : diagnostic.
-- `llm-gateway setup` : installation des modèles Ollama manquants.
-- `llm-gateway setup-secrets` : configuration du backend de secrets.
-- `llm-gateway intake` : convertisseur de données (4 sous-commandes).
-- `llm-gateway benchmarks refresh` : rafraîchissement forcé.
-- `llm-gateway batch run` : traitement par lot avec `--resume`, `--dry-run`, `--max-cost-eur`, `--no-classifier`, `--classifier-model`, `--no-doctor`, `--no-install`, `--yes`, `--verbose`.
+- `gateway-llm doctor` : diagnostic.
+- `gateway-llm setup` : installation des modèles Ollama manquants.
+- `gateway-llm setup-secrets` : configuration du backend de secrets.
+- `gateway-llm intake` : convertisseur de données (4 sous-commandes).
+- `gateway-llm benchmarks refresh` : rafraîchissement forcé.
+- `gateway-llm batch run` : traitement par lot avec `--resume`, `--dry-run`, `--max-cost-eur`, `--no-classifier`, `--classifier-model`, `--no-doctor`, `--no-install`, `--yes`, `--verbose`.
 - `--help` exhaustif pour chaque commande avec épilogues et exemples.
 
 #### Tests
@@ -163,7 +163,7 @@ du projet initial (`pipeline/`, `process_batch.py` de 880 lignes).
 - **`shell=True` avec f-string** dans `_get_secret` : remplacé par `subprocess.run([...])` avec liste d'arguments et échappement d'apostrophes.
 - **`sys.path.insert` dans les tests** : supprimé par le layout `src/` + installation editable.
 - **État global mutable** (`_SECRET_CACHE`, `_GUARDRAILS_APP`, `_PROVIDER_CALLS`) : encapsulé dans des instances injectables.
-- **Imports Azure au niveau module** : déplacés en lazy import pour ne pas casser `import llm_gateway.secrets` si azure n'est pas installé.
+- **Imports Azure au niveau module** : déplacés en lazy import pour ne pas casser `import gateway_llm.secrets` si azure n'est pas installé.
 - **Incohérence `success` booléen vs réponse partielle** : introduction du champ `status` explicite.
 
 ### Security
@@ -174,7 +174,7 @@ du projet initial (`pipeline/`, `process_batch.py` de 880 lignes).
 - `bandit -r src/` en CI.
 - Pas de `shell=True` nulle part.
 - Backends de secrets à choix explicite : aucune bascule silencieuse vers `.env`.
-- `~/.llm-gateway/secrets.yaml` ne contient jamais de secret final, seulement la config du backend.
+- `~/.gateway-llm/secrets.yaml` ne contient jamais de secret final, seulement la config du backend.
 - Recommendation `chmod 600` documentée pour le fichier de config.
 - Support `confidential` → `[ollama]` uniquement pour les données sensibles (y compris screenshots avec KPI).
 
@@ -184,9 +184,9 @@ du projet initial (`pipeline/`, `process_batch.py` de 880 lignes).
 
 Si vous venez du projet `pipeline/` initial, voici les correspondances :
 
-| Projet original | `llm-gateway` |
+| Projet original | `gateway-llm` |
 | :--- | :--- |
-| `process_batch.py` (880 lignes) | 15+ modules sous `src/llm_gateway/` |
+| `process_batch.py` (880 lignes) | 15+ modules sous `src/gateway_llm/` |
 | `_get_secret()` | `PowerShellVaultBackend.get()` |
 | `call_llm_with_fallback()` | `Router.route()` |
 | `classify_and_route_task()` | `TaskClassifier.classify()` |
@@ -198,5 +198,5 @@ Si vous venez du projet `pipeline/` initial, voici les correspondances :
 | `history/tasks_*.json` | Non conservé (chaque sortie JSONL est un historique) |
 | `scrape.py` / `auto_detect_selectors.py` | Non conservé (supprimé) |
 
-[Unreleased]: https://github.com/Darki0n1/llm-gateway/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/Darki0n1/llm-gateway/releases/tag/v0.1.0
+[Unreleased]: https://github.com/Darki0n1/gateway-llm/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/Darki0n1/gateway-llm/releases/tag/v0.1.0

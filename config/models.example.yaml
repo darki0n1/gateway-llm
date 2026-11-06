@@ -12,7 +12,7 @@ providers:
     secret_name: OPENROUTER_API_KEY
     extra_headers:
       HTTP-Referer: "http://localhost:8000"
-      X-Title: "llm-gateway"
+      X-Title: "gateway-llm"
   mistral:
     type: openai_compat
     base_url: https://api.mistral.ai/v1

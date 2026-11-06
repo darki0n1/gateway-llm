@@ -3,7 +3,7 @@
 
 """Guardrail NeMo (détection d'hallucinations).
 
-Dépendance optionnelle : `pip install llm-gateway[guardrails]`.
+Dépendance optionnelle : `pip install gateway-llm[guardrails]`.
 """
 
 from __future__ import annotations
@@ -35,7 +35,7 @@ class NemoGuardrail(Guardrail):
         except ImportError as e:
             raise RuntimeError(
                 "NeMo Guardrails non installé. "
-                "Lance `pip install llm-gateway[guardrails]`."
+                "Lance `pip install gateway-llm[guardrails]`."
             ) from e
 
         if not self._config_path.exists():

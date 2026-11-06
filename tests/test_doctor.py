@@ -10,18 +10,18 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from llm_gateway.doctor import Doctor, DoctorReport, Severity
+from gateway_llm.doctor import Doctor, DoctorReport, Severity
 
 
 # ─── Cas nominal ───────────────────────────────────────────────
-@patch("llm_gateway.doctor.shutil.which", return_value="/usr/bin/ollama")
-@patch("llm_gateway.doctor.requests.get")
+@patch("gateway_llm.doctor.shutil.which", return_value="/usr/bin/ollama")
+@patch("gateway_llm.doctor.requests.get")
 def test_all_ok(mock_get, _which, tmp_path, monkeypatch):
     mock_get.return_value = MagicMock(
         status_code=200,
         json=lambda: {"models": [{"name": "qwen3:4b"}, {"name": "qwen3:8b"}]},
     )
-    import llm_gateway.secrets as sec
+    import gateway_llm.secrets as sec
     cfg = tmp_path / "secrets.yaml"
     cfg.write_text("backend: env\noptions: {}\n")
     monkeypatch.setattr(sec, "_CONFIG_PATH", cfg)
@@ -33,9 +33,9 @@ def test_all_ok(mock_get, _which, tmp_path, monkeypatch):
 
 
 # ─── Ollama ────────────────────────────────────────────────────
-@patch("llm_gateway.doctor.shutil.which", return_value=None)
+@patch("gateway_llm.doctor.shutil.which", return_value=None)
 def test_ollama_binary_missing(_which, tmp_path, monkeypatch):
-    import llm_gateway.secrets as sec
+    import gateway_llm.secrets as sec
     monkeypatch.setattr(sec, "_CONFIG_PATH", tmp_path / "none.yaml")
     d = Doctor()
     report = d.run()
@@ -43,12 +43,12 @@ def test_ollama_binary_missing(_which, tmp_path, monkeypatch):
     assert any("Ollama (binaire)" in n for n in names)
 
 
-@patch("llm_gateway.doctor.shutil.which", return_value="/usr/bin/ollama")
-@patch("llm_gateway.doctor.requests.get")
+@patch("gateway_llm.doctor.shutil.which", return_value="/usr/bin/ollama")
+@patch("gateway_llm.doctor.requests.get")
 def test_daemon_unreachable(mock_get, _which, tmp_path, monkeypatch):
     import requests
     mock_get.side_effect = requests.exceptions.ConnectionError("refused")
-    import llm_gateway.secrets as sec
+    import gateway_llm.secrets as sec
     monkeypatch.setattr(sec, "_CONFIG_PATH", tmp_path / "none.yaml")
     d = Doctor()
     report = d.run()
@@ -56,13 +56,13 @@ def test_daemon_unreachable(mock_get, _which, tmp_path, monkeypatch):
     assert any("Ollama (daemon)" in n for n in names)
 
 
-@patch("llm_gateway.doctor.shutil.which", return_value="/usr/bin/ollama")
-@patch("llm_gateway.doctor.requests.get")
+@patch("gateway_llm.doctor.shutil.which", return_value="/usr/bin/ollama")
+@patch("gateway_llm.doctor.requests.get")
 def test_models_missing(mock_get, _which, tmp_path, monkeypatch):
     mock_get.return_value = MagicMock(
         status_code=200, json=lambda: {"models": [{"name": "qwen3:4b"}]},
     )
-    import llm_gateway.secrets as sec
+    import gateway_llm.secrets as sec
     monkeypatch.setattr(sec, "_CONFIG_PATH", tmp_path / "none.yaml")
     d = Doctor(required_models=["qwen3:4b", "qwen3:8b", "mistral"])
     report = d.run()
@@ -70,9 +70,9 @@ def test_models_missing(mock_get, _which, tmp_path, monkeypatch):
 
 
 # ─── Stockage des secrets ─────────────────────────────────────
-@patch("llm_gateway.doctor.shutil.which", return_value=None)
+@patch("gateway_llm.doctor.shutil.which", return_value=None)
 def test_secret_storage_no_config(_which, tmp_path, monkeypatch):
-    import llm_gateway.secrets as sec
+    import gateway_llm.secrets as sec
     monkeypatch.setattr(sec, "_CONFIG_PATH", tmp_path / "none.yaml")
     # Pas de .env, pas d'env vars
     for var in ["GROQ_API_KEY", "MISTRAL_API_KEY", "OPENROUTER_API_KEY",
@@ -85,9 +85,9 @@ def test_secret_storage_no_config(_which, tmp_path, monkeypatch):
     assert "Aucun backend" in secret_results[0].message
 
 
-@patch("llm_gateway.doctor.shutil.which", return_value=None)
+@patch("gateway_llm.doctor.shutil.which", return_value=None)
 def test_secret_storage_env_vars_detected(_which, tmp_path, monkeypatch):
-    import llm_gateway.secrets as sec
+    import gateway_llm.secrets as sec
     monkeypatch.setattr(sec, "_CONFIG_PATH", tmp_path / "none.yaml")
     monkeypatch.setenv("GROQ_API_KEY", "gsk_xxx")
 
@@ -97,9 +97,9 @@ def test_secret_storage_env_vars_detected(_which, tmp_path, monkeypatch):
     assert "Variables d'env" in secret_results[0].message
 
 
-@patch("llm_gateway.doctor.shutil.which", return_value=None)
+@patch("gateway_llm.doctor.shutil.which", return_value=None)
 def test_secret_storage_dotenv_detected(_which, tmp_path, monkeypatch):
-    import llm_gateway.secrets as sec
+    import gateway_llm.secrets as sec
     monkeypatch.setattr(sec, "_CONFIG_PATH", tmp_path / "none.yaml")
     monkeypatch.chdir(tmp_path)
     (tmp_path / ".env").write_text("GROQ_API_KEY=gsk_xxx\n")
@@ -110,9 +110,9 @@ def test_secret_storage_dotenv_detected(_which, tmp_path, monkeypatch):
     assert ".env" in secret_results[0].message
 
 
-@patch("llm_gateway.doctor.shutil.which", return_value=None)
+@patch("gateway_llm.doctor.shutil.which", return_value=None)
 def test_secret_storage_backend_ok(_which, tmp_path, monkeypatch):
-    import llm_gateway.secrets as sec
+    import gateway_llm.secrets as sec
     cfg = tmp_path / "secrets.yaml"
     cfg.write_text("backend: env\noptions: {}\n")
     monkeypatch.setattr(sec, "_CONFIG_PATH", cfg)
@@ -124,16 +124,16 @@ def test_secret_storage_backend_ok(_which, tmp_path, monkeypatch):
     assert "opérationnel" in secret_results[0].message
 
 
-@patch("llm_gateway.doctor.shutil.which", return_value=None)
+@patch("gateway_llm.doctor.shutil.which", return_value=None)
 def test_secret_storage_backend_unavailable(_which, tmp_path, monkeypatch):
     """Backend configuré mais is_available() retourne False."""
-    import llm_gateway.secrets as sec
+    import gateway_llm.secrets as sec
     cfg = tmp_path / "secrets.yaml"
     cfg.write_text("backend: powershell_vault\noptions: {}\n")
     monkeypatch.setattr(sec, "_CONFIG_PATH", cfg)
 
     # PowerShell absent sur cette machine de test
-    with patch("llm_gateway.secrets.shutil.which", return_value=None):
+    with patch("gateway_llm.secrets.shutil.which", return_value=None):
         report = Doctor().run()
     secret_results = [r for r in report.results if "Stockage" in r.name]
     assert len(secret_results) == 1

@@ -37,7 +37,7 @@ jobs:
 
       - name: Commit si changements
         run: |
-          git config user.name "llm-gateway-bot"
+          git config user.name "gateway-llm-bot"
           git config user.email "bot@users.noreply.github.com"
           git add benchmarks_cache/f5_safety.json benchmarks_cache/rws_translation.json || true
           if git diff --cached --quiet; then

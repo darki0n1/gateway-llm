@@ -1,4 +1,4 @@
-# Threat Model — llm-gateway
+# Threat Model — gateway-llm
 
 **Version** : 0.1.0 · **Dernière revue** : 2026-01-01
 
@@ -7,7 +7,7 @@
 | Actif | Sensibilité | Emplacement |
 | :--- | :--- | :--- |
 | Clés API (Groq, Mistral, OpenRouter, Google, NVIDIA, Cloudflare) | Critique | Backend de secrets configuré (PowerShell Vault, 1Password, HashiCorp, AWS, Azure) |
-| Configuration backend secrets (`~/.llm-gateway/secrets.yaml`) | Élevée | Hors repo, hors du code |
+| Configuration backend secrets (`~/.gateway-llm/secrets.yaml`) | Élevée | Hors repo, hors du code |
 | Prompts des utilisateurs | Variable (`sensitivity`) | Fichier d'entrée JSONL |
 | Screenshots avec données sensibles (KPI, PII) | Variable | Fichiers locaux + éventuellement cloud |
 | Réponses des modèles | Variable | Fichier de sortie JSONL |
@@ -83,7 +83,7 @@
 
 **Mitigations** :
 - Vérification de hash par Ollama (hors périmètre du projet).
-- `llm-gateway` ne charge aucun poids distant.
+- `gateway-llm` ne charge aucun poids distant.
 
 ### T8 — Fuite de résidence des données
 
@@ -145,14 +145,14 @@
 - Aucune exécution de code depuis le contenu.
 - Le résumé final (`BatchStats.done_before`) est visible dans les logs pour audit.
 
-### T14 — Fuite du token dans `~/.llm-gateway/secrets.yaml`
+### T14 — Fuite du token dans `~/.gateway-llm/secrets.yaml`
 
 **Risque** : le fichier de configuration du backend contient un token HashiCorp ou un identifiant Azure SP en clair. Ce fichier est hors repo, mais lisible par tout processus de l'utilisateur.
 
 **Mitigations** :
 - Le fichier ne contient **jamais** de clé API finale (uniquement le nom du backend et ses options de connexion : URL, mount, vault, région).
 - Le token HashiCorp et le SP Azure sont lus depuis les mécanismes standards (`X-Vault-Token`, `DefaultAzureCredential` qui utilise `~/.azure/` protégé par l'OS).
-- Recommandation documentée : `chmod 600 ~/.llm-gateway/secrets.yaml` (Unix) ou équivalent (Windows ACL).
+- Recommandation documentée : `chmod 600 ~/.gateway-llm/secrets.yaml` (Unix) ou équivalent (Windows ACL).
 - Pour HashiCorp Vault, préférer un token à durée de vie courte (TTL 1h) ou l'authentification AppRole.
 - Alerte dans `doctor` si le fichier a des permissions trop larges (todo : implémenter le check `os.stat().st_mode`).
 
@@ -189,7 +189,7 @@
 7. **Maintenir les dépendances à jour** (Dependabot activé).
 8. **Ne pas éditer `benchmarks_cache/` sans revue** si partagé en équipe.
 9. **Rotation trimestrielle des clés API.**
-10. **Vérifier les permissions de `~/.llm-gateway/secrets.yaml`** (`600` sur Unix, ACL restreinte sur Windows).
+10. **Vérifier les permissions de `~/.gateway-llm/secrets.yaml`** (`600` sur Unix, ACL restreinte sur Windows).
 
 ## 5. Calendrier de revue
 

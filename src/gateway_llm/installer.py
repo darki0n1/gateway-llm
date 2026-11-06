@@ -3,7 +3,7 @@
 
 """Téléchargement des modèles Ollama manquants.
 
-Appelé par `llm-gateway setup` et par le pre-flight de `batch run`.
+Appelé par `gateway-llm setup` et par le pre-flight de `batch run`.
 """
 
 from __future__ import annotations

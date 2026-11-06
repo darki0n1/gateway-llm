@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Amandine Dennieau
 # SPDX-License-Identifier: Apache-2.0
 
-"""Configuration du logging pour llm_gateway.
+"""Configuration du logging pour gateway_llm.
 
 Comportement par défaut : bibliothèque silencieuse (NullHandler sur le
 logger racine du package). L'application hôte (ou le CLI) appelle
@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 from logging.config import dictConfig
 
-PACKAGE_LOGGER_NAME = "llm_gateway"
+PACKAGE_LOGGER_NAME = "gateway_llm"
 
 # ─── NullHandler : la bibliothèque ne crie pas toute seule ─────────────────
 _pkg_logger = logging.getLogger(PACKAGE_LOGGER_NAME)

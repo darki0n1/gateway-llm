@@ -22,7 +22,7 @@ from bs4 import BeautifulSoup
 
 OUT = pathlib.Path("benchmarks_cache/rws_translation.json")
 URL = "https://m-gate.ai/leaderboard/"
-HEADERS = {"User-Agent": "llm-gateway-benchmark-bot/0.1"}
+HEADERS = {"User-Agent": "gateway-llm-benchmark-bot/0.1"}
 
 
 def parse_mgate(html: str) -> dict[str, float]:

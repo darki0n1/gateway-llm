@@ -1,53 +1,50 @@
-# Copyright 2026 Amandine Dennieau
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# SPDX-FileCopyrightText: 2026 Amandine Dennieau
+# SPDX-License-Identifier: Apache-2.0
 
 [build-system]
 requires = ["hatchling>=1.25"]
 build-backend = "hatchling.build"
 
 [project]
-name = "llm-gateway"
+name = "gateway-llm"
 version = "0.1.0"
-description = "Quality-Gated Batch Router : routage LLM par cascade avec guardrails, budget et politique de résidence."
+description = "Quality-Gated Batch Router : routage LLM par cascade, guardrails, budget et résidence des données."
 readme = "README.md"
 requires-python = ">=3.11"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
-authors = [{ name = "<VOTRE NOM>", email = "<vous@example.com>" }]
-keywords = ["llm", "router", "batch", "guardrails", "fallback", "cost", "souverainete"]
+authors = [{ name = "Amandine Dennieau", email = "dennieau.amandine@proton.me" }]
+keywords = ["llm", "router", "batch", "guardrails", "fallback", "cost"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
+    "Intended Audience :: End Users/Desktop",
     "License :: OSI Approved :: Apache Software License",
     "Operating System :: OS Independent",
-    "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
-    "Typing :: Typed",
 ]
+
+# ─── Tout ce qu'il faut à un utilisateur final ────────────────
 dependencies = [
+    # Base
     "requests>=2.32",
     "pydantic>=2.0",
     "pyyaml>=6.0",
+    # Détection d'hallucinations (pilier du projet, PAS optionnel)
+    "nemoguardrails>=0.11",
+    # Parsing HTML pour intake from-urls
+    "beautifulsoup4>=4.12",
+    # Backends de secrets cloud (installés par défaut, sélection au runtime)
+    "boto3>=1.34",                        # AWS Secrets Manager
+    "azure-identity>=1.15",               # Azure Key Vault
+    "azure-keyvault-secrets>=4.9",
 ]
 
+# ─── Réservé aux développeurs qui contribuent au code ────────
 [project.optional-dependencies]
-guardrails = ["nemoguardrails>=0.11"]
-aws = ["boto3>=1.34"]
-azure = ["azure-identity>=1.15", "azure-keyvault-secrets>=4.9"]
 dev = [
     "pytest>=8.0",
     "pytest-cov>=5.0",
@@ -58,16 +55,10 @@ dev = [
 ]
 
 [project.scripts]
-llm-gateway = "llm_gateway.cli:main"
-
-[project.urls]
-Homepage = "https://github.com/<vous>/llm-gateway"
-Repository = "https://github.com/<vous>/llm-gateway"
-Issues = "https://github.com/<vous>/llm-gateway/issues"
-Changelog = "https://github.com/<vous>/llm-gateway/blob/main/CHANGELOG.md"
+gateway-llm = "gateway_llm.cli:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/llm_gateway"]
+packages = ["src/gateway_llm"]
 
 # ────────────────────────────────────────────────────────────────
 # Ruff — lint + format
@@ -82,7 +73,7 @@ select = ["E", "F", "I", "B", "UP", "S", "SIM", "RUF"]
 ignore = ["S101"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101", "S105", "S106"]
+"tests/**" = ["S101", "S105", "S106", "ARG001", "ARG002"]
 
 # ────────────────────────────────────────────────────────────────
 # Bandit — analyse statique de sécurité
@@ -103,7 +94,7 @@ testpaths = ["tests"]
 # Coverage
 # ────────────────────────────────────────────────────────────────
 [tool.coverage.run]
-source = ["src/llm_gateway"]
+source = ["src/gateway_llm"]
 branch = true
 
 [tool.coverage.report]

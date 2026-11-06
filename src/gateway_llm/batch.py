@@ -13,21 +13,21 @@ import pathlib
 import time
 from dataclasses import dataclass, field
 
-from llm_gateway.benchmarks.aggregator import BenchmarkAggregator
-from llm_gateway.budget import BudgetTracker
-from llm_gateway.checkpoint import Checkpoint
-from llm_gateway.classifier import ClassificationResult, TaskClassifier
-from llm_gateway.config import ModelsConfig, PolicyConfig
-from llm_gateway.guardrails.base import Guardrail
-from llm_gateway.guardrails.noop import NoOpGuardrail
-from llm_gateway.hardware import HardwareInfo
-from llm_gateway.providers.base import Provider
-from llm_gateway.providers.cloudflare import CloudflareProvider
-from llm_gateway.providers.ollama import OllamaProvider
-from llm_gateway.providers.openai_compat import OpenAICompatibleProvider
-from llm_gateway.quota import QuotaManager
-from llm_gateway.router import Router
-from llm_gateway.secrets import SecretBackend, get_backend
+from gateway_llm.benchmarks.aggregator import BenchmarkAggregator
+from gateway_llm.budget import BudgetTracker
+from gateway_llm.checkpoint import Checkpoint
+from gateway_llm.classifier import ClassificationResult, TaskClassifier
+from gateway_llm.config import ModelsConfig, PolicyConfig
+from gateway_llm.guardrails.base import Guardrail
+from gateway_llm.guardrails.noop import NoOpGuardrail
+from gateway_llm.hardware import HardwareInfo
+from gateway_llm.providers.base import Provider
+from gateway_llm.providers.cloudflare import CloudflareProvider
+from gateway_llm.providers.ollama import OllamaProvider
+from gateway_llm.providers.openai_compat import OpenAICompatibleProvider
+from gateway_llm.quota import QuotaManager
+from gateway_llm.router import Router
+from gateway_llm.secrets import SecretBackend, get_backend
 
 log = logging.getLogger(__name__)
 
@@ -97,7 +97,7 @@ class BatchRunner:
             except RuntimeError as e:
                 raise RuntimeError(
                     f"{e}\n"
-                    "Lancez `llm-gateway setup-secrets` ou ouvrez l'onglet "
+                    "Lancez `gateway-llm setup-secrets` ou ouvrez l'onglet "
                     "Configuration de la GUI."
                 ) from e
 
@@ -115,10 +115,10 @@ class BatchRunner:
     def _maybe_refresh_benchmarks(self) -> None:
         """Rafraîchit le cache benchmarks si plus vieux que N jours.
 
-        Contrôlé par la variable d'environnement LLM_GATEWAY_BENCHMARK_TTL_DAYS
+        Contrôlé par la variable d'environnement gateway_llm_BENCHMARK_TTL_DAYS
         (défaut: 14). Non bloquant : une erreur réseau est un simple warning.
         """
-        ttl_days = int(os.environ.get("LLM_GATEWAY_BENCHMARK_TTL_DAYS", "14"))
+        ttl_days = int(os.environ.get("gateway_llm_BENCHMARK_TTL_DAYS", "14"))
         cache_dir = pathlib.Path("benchmarks_cache")
 
         if cache_dir.exists():
@@ -138,11 +138,11 @@ class BatchRunner:
             log.info("Premier lancement : rafraîchissement initial des benchmarks")
 
         try:
-            from llm_gateway.benchmarks.base import TaskCategory
-            from llm_gateway.benchmarks.benchlm import BenchLMAdapter
-            from llm_gateway.benchmarks.f5_safety import F5SafetyAdapter
-            from llm_gateway.benchmarks.rankllms import RankLLMsAdapter
-            from llm_gateway.benchmarks.rws_translation import RWSTranslationAdapter
+            from gateway_llm.benchmarks.base import TaskCategory
+            from gateway_llm.benchmarks.benchlm import BenchLMAdapter
+            from gateway_llm.benchmarks.f5_safety import F5SafetyAdapter
+            from gateway_llm.benchmarks.rankllms import RankLLMsAdapter
+            from gateway_llm.benchmarks.rws_translation import RWSTranslationAdapter
 
             sources = [
                 BenchLMAdapter(),

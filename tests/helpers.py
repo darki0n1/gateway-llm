@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from llm_gateway.providers.base import Provider, ProviderResponse
+from gateway_llm.providers.base import Provider, ProviderResponse
 
 
 class FakeProvider(Provider):
@@ -16,7 +16,14 @@ class FakeProvider(Provider):
         self._outcomes = list(outcomes)
         self.call_count = 0
 
-    def complete(self, model, prompt, max_tokens, temperature=0.3):
+    def complete(
+        self,
+        model: str,
+        prompt: str,
+        max_tokens: int,
+        temperature: float = 0.3,
+        image_b64: str | None = None,
+    ):
         if self.call_count >= len(self._outcomes):
             raise RuntimeError(f"{self.name}: plus d'outcomes scriptés")
         outcome = self._outcomes[self.call_count]

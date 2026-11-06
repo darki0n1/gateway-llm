@@ -1,4 +1,4 @@
-# Contribuer à llm-gateway
+# Contribuer à gateway-llm
 
 Merci de l'intérêt porté au projet. Ce document décrit comment installer
 l'environnement de développement, quel est le style de code attendu, comment
@@ -23,8 +23,8 @@ un consensus mainteneur — pas par la force de frappe argumentative.
 ### Installation
 
 ```bash
-git clone https://github.com/<vous>/llm-gateway.git
-cd llm-gateway
+git clone https://github.com/Darki0n1/gateway-llm.git
+cd gateway-llm
 
 python -m venv .venv
 source .venv/bin/activate       # Linux / macOS
@@ -34,7 +34,7 @@ pip install -e ".[dev]"
 ```
 
 L'installation en mode **editable** (`-e`) est obligatoire : elle permet à
-`pytest` et à Pylance de résoudre `import llm_gateway` directement depuis
+`pytest` et à Pylance de résoudre `import gateway_llm` directement depuis
 `src/`, sans `sys.path.insert`.
 
 ### Vérifier que tout fonctionne
@@ -50,7 +50,7 @@ Les trois doivent passer sans erreur avant de commencer à coder.
 ## Structure du projet
 
 ```
-src/llm_gateway/        # code du package (layout src/)
+src/gateway_llm/        # code du package (layout src/)
 tests/                  # tests unitaires (mocks, pas de réseau)
 docs/                   # documentation utilisateur et technique
 config/                 # exemples de configuration (YAML)
@@ -96,7 +96,7 @@ injectable.
   d'arguments.
 - **Pas d'import cloud au niveau module.** `import boto3`, `import azure.*`
   doivent être **dans la méthode** qui les utilise, avec
-  `# type: ignore[import-not-found]`. Sinon, `import llm_gateway.secrets`
+  `# type: ignore[import-not-found]`. Sinon, `import gateway_llm.secrets`
   casse pour tous les utilisateurs qui n'ont pas installé ces extras.
 
 ### Vérifications avant commit
@@ -137,7 +137,7 @@ docs(guide): section configuration des secrets
 ```bash
 pytest                          # tout
 pytest tests/test_router.py     # un fichier
-pytest -v --cov=llm_gateway     # avec couverture
+pytest -v --cov=gateway_llm     # avec couverture
 pytest -k "quota"               # filtrer par nom
 ```
 
@@ -171,7 +171,7 @@ cassée.
 
 ### Ajouter un provider LLM
 
-1. Créez `src/llm_gateway/providers/<nom>.py` héritant de `Provider`.
+1. Créez `src/gateway_llm/providers/<nom>.py` héritant de `Provider`.
 2. Implémentez `complete(model, prompt, max_tokens, temperature, image_b64)`.
 3. Levez `RateLimitError` sur 429, `ProviderUnavailableError` sur les autres
    erreurs non récupérables.
@@ -231,7 +231,7 @@ cassée.
 ### Ne jamais committer de secret
 
 - Pas de `.env`, pas de `config/models.yaml` avec des clés, pas de
-  `~/.llm-gateway/secrets.yaml`.
+  `~/.gateway-llm/secrets.yaml`.
 - Si vous voyez un secret dans une PR, signalez-le immédiatement en commentaire
   et n'approuvez pas la PR.
 
