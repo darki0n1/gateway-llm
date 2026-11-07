@@ -6,17 +6,169 @@
 from __future__ import annotations
 
 import json
+import logging
 import pathlib
+import subprocess
+import sys
 import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
+from typing import Any
 
+from gateway_llm.config import LocalMode, save_local_mode
 from gateway_llm.intake import (
-    intake_from_csv,
+    intake_from_csv_multi,
     intake_from_folder,
     intake_from_text,
     intake_from_urls,
+    intake_mixed,
 )
+
+log = logging.getLogger(__name__)
+
+# ─── Drag & Drop (optionnel) ──────────────────────────────────
+
+try:
+    from tkinterdnd2 import DND_FILES, TkinterDnD  # type: ignore[import-not-found]
+
+    _TkBase: Any = TkinterDnD.Tk
+    _DND_AVAILABLE = True
+except ImportError:
+    _TkBase = tk.Tk
+    DND_FILES = None  # type: ignore[assignment]
+    _DND_AVAILABLE = False
+
+
+# ─── Playwright Chromium : check + installation auto ──────────
+def _playwright_chromium_ok() -> bool:
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        return False
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            browser.close()
+        return True
+    except Exception:
+        return False
+
+
+def _install_playwright_chromium(timeout: int = 600) -> bool:
+    try:
+        r = subprocess.run(
+            [sys.executable, "-m", "playwright", "install", "chromium"],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as e:
+        log.error("Installation Chromium échouée : %s", e)
+        return False
+    if r.returncode != 0:
+        log.error(
+            "playwright install chromium a retourné %d : %s",
+            r.returncode,
+            (r.stderr or "").strip()[:200],
+        )
+        return False
+    return True
+
+
+# ─── Handler de logs vers widget Text ─────────────────────────
+class _TextHandler(logging.Handler):
+    def __init__(self, text_widget: tk.Text) -> None:
+        super().__init__()
+        self._widget = text_widget
+        self.setFormatter(logging.Formatter("[%(levelname)s] %(message)s"))
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            msg = self.format(record)
+            self._widget.after(0, self._append, msg)
+        except Exception:
+            pass
+
+    def _append(self, msg: str) -> None:
+        try:
+            self._widget.config(state="normal")
+            self._widget.insert("end", msg + "\n")
+            self._widget.see("end")
+            self._widget.config(state="disabled")
+        except tk.TclError:
+            pass
+
+
+# ─── Dialogue de premier lancement : mode d'exécution ─────────
+class ModeDialog(tk.Toplevel):
+    def __init__(self, parent: tk.Tk) -> None:
+        super().__init__(parent)
+        self.title("Mode d'exécution")
+        self.geometry("620x520")
+        self.resizable(False, False)
+        self.result: LocalMode | None = None
+
+        ttk.Label(
+            self,
+            text="Comment voulez-vous utiliser gateway-llm ?",
+            font=("", 12, "bold"),
+        ).pack(pady=(16, 4), padx=20, anchor="w")
+
+        ttk.Label(
+            self,
+            text=(
+                "Ce choix détermine quels modèles sont téléchargés et utilisés.\n"
+                "Vous pourrez le modifier plus tard dans ~/.gateway-llm/config.yaml."
+            ),
+            foreground="gray",
+        ).pack(pady=(0, 12), padx=20, anchor="w")
+
+        self.var = tk.StringVar(value=LocalMode.DEFAULT.value)
+        options = [
+            (
+                LocalMode.CLOUD_ONLY,
+                "100% cloud",
+                "Utilise uniquement les API cloud (Groq, Mistral, OpenRouter,\n"
+                "Google…). Clés API requises. Aucun modèle local téléchargé.",
+            ),
+            (
+                LocalMode.LOCAL_ONLY,
+                "100% local",
+                "Télécharge les meilleurs modèles Ollama pour votre machine\n"
+                "(VRAM + RAM + disque détectés). Aucune donnée ne sort.",
+            ),
+            (
+                LocalMode.HYBRID,
+                "Hybride",
+                "Utilise les modèles locaux déjà présents, complète avec le\n"
+                "cloud quand un meilleur modèle cloud est disponible.",
+            ),
+            (
+                LocalMode.DEFAULT,
+                "Défaut (recommandé)",
+                "Télécharge uniquement les modèles bootstrap (qwen légers)\n"
+                "pour le routage, les embeddings et la classification.",
+            ),
+        ]
+        for mode, title, desc in options:
+            frame = ttk.Frame(self)
+            frame.pack(fill="x", padx=20, pady=4)
+            ttk.Radiobutton(
+                frame, text=title, variable=self.var, value=mode.value
+            ).pack(anchor="w")
+            ttk.Label(
+                frame, text=desc, foreground="gray", justify="left"
+            ).pack(anchor="w", padx=(24, 0))
+
+        ttk.Button(self, text="Valider", command=self._ok).pack(pady=16)
+        self.transient(parent)
+        self.grab_set()
+
+    def _ok(self) -> None:
+        self.result = LocalMode(self.var.get())
+        save_local_mode(self.result)
+        self.destroy()
 
 
 # ─── Onglet 1 : Préparation des données ────────────────────────
@@ -27,10 +179,7 @@ class PrepareTab(ttk.Frame):
 
     def _build(self) -> None:
         ttk.Label(self, text="Type de source :").grid(
-            row=0,
-            column=0,
-            sticky="w",
-            pady=(0, 4),
+            row=0, column=0, sticky="w", pady=(0, 4)
         )
         self.source_type = tk.StringVar(value="Dossier d'images")
         ttk.Combobox(
@@ -40,79 +189,65 @@ class PrepareTab(ttk.Frame):
             values=[
                 "Dossier d'images",
                 "Dossier de fichiers texte (.txt, .md, .eml)",
-                "Fichier CSV",
+                "Fichier(s) CSV",
                 "Liste d'URLs (.txt)",
+                "Mixte (images + textes + CSV)",
             ],
         ).grid(row=1, column=0, columnspan=3, sticky="ew", pady=(0, 12))
 
-        ttk.Label(self, text="Emplacement :").grid(
-            row=2,
-            column=0,
-            sticky="w",
-            pady=(0, 4),
-        )
-        self.path_var = tk.StringVar()
-        ttk.Entry(self, textvariable=self.path_var).grid(
-            row=3,
-            column=0,
-            columnspan=2,
-            sticky="ew",
-        )
-        ttk.Button(self, text="Parcourir…", command=self._pick_source).grid(
-            row=3,
-            column=2,
-            padx=(6, 0),
+        hint = (
+            "Emplacement(s) — glisser-déposer accepté :"
+            if _DND_AVAILABLE
+            else "Emplacement(s) :"
         )
 
+        ttk.Label(self, text=hint).grid(row=2, column=0, sticky="w", pady=(0, 4))
+
+        self.paths_listbox = tk.Listbox(self, height=5, selectmode="extended")
+        self.paths_listbox.grid(row=3, column=0, columnspan=2, sticky="ew")
+
+        btn_frame = ttk.Frame(self)
+        btn_frame.grid(row=3, column=2, padx=(6, 0), sticky="n")
+        ttk.Button(btn_frame, text="Ajouter…", command=self._add_sources).pack(fill="x")
+        ttk.Button(
+            btn_frame, text="Retirer", command=self._remove_selected
+        ).pack(fill="x", pady=(4, 0))
+        ttk.Button(
+            btn_frame,
+            text="Vider",
+            command=lambda: self.paths_listbox.delete(0, "end"),
+        ).pack(fill="x", pady=(4, 0))
+
         ttk.Label(self, text="Colonne CSV (si applicable) :").grid(
-            row=4,
-            column=0,
-            sticky="w",
-            pady=(12, 4),
+            row=4, column=0, sticky="w", pady=(12, 4)
         )
         self.column_var = tk.StringVar()
         self.column_combo = ttk.Combobox(
-            self,
-            textvariable=self.column_var,
-            state="readonly",
+            self, textvariable=self.column_var, state="readonly"
         )
         self.column_combo.grid(row=5, column=0, columnspan=3, sticky="ew")
 
         ttk.Label(self, text="Consigne envoyée au modèle :").grid(
-            row=6,
-            column=0,
-            sticky="w",
-            pady=(12, 4),
+            row=6, column=0, sticky="w", pady=(12, 4)
         )
         self.prompt_var = tk.StringVar(
-            value="Analyse cette image et décris ce que tu vois.",
+            value="Analyse cette image et décris ce que tu vois."
         )
         ttk.Entry(self, textvariable=self.prompt_var).grid(
-            row=7,
-            column=0,
-            columnspan=3,
-            sticky="ew",
+            row=7, column=0, columnspan=3, sticky="ew"
         )
 
         ttk.Label(self, text="Fichier de sortie (.jsonl) :").grid(
-            row=8,
-            column=0,
-            sticky="w",
-            pady=(12, 4),
+            row=8, column=0, sticky="w", pady=(12, 4)
         )
         self.out_var = tk.StringVar(
-            value=str(pathlib.Path.cwd() / "tasks.jsonl"),
+            value=str(pathlib.Path.cwd() / "tasks.jsonl")
         )
         ttk.Entry(self, textvariable=self.out_var).grid(
-            row=9,
-            column=0,
-            columnspan=2,
-            sticky="ew",
+            row=9, column=0, columnspan=2, sticky="ew"
         )
         ttk.Button(
-            self,
-            text="Enregistrer sous…",
-            command=self._pick_output,
+            self, text="Enregistrer sous…", command=self._pick_output
         ).grid(row=9, column=2, padx=(6, 0))
 
         ttk.Button(
@@ -121,18 +256,57 @@ class PrepareTab(ttk.Frame):
             command=self._generate,
         ).grid(row=10, column=0, columnspan=3, pady=20)
 
-    def _pick_source(self) -> None:
+    # ─── Drag & Drop ──────────────────────────────────────────
+    def _on_drop(self, event) -> None:
+        if not _DND_AVAILABLE:
+            return
+        try:
+            paths = self.tk.splitlist(event.data)
+        except Exception:
+            return
+        for p in paths:
+            self.paths_listbox.insert("end", p)
+
+    # ─── Ajout / suppression ──────────────────────────────────
+    def _add_sources(self) -> None:
         stype = self.source_type.get()
-        if stype.startswith("Dossier"):
-            p = filedialog.askdirectory()
-        else:
-            p = filedialog.askopenfilename(
-                filetypes=[("Fichier", "*.csv *.txt"), ("Tous", "*.*")],
+        if stype == "Fichier(s) CSV":
+            self.prompt_var.set(
+                "Voici un tableau :\n\n{table}\n\n"
+                "Réponds à la demande suivante en te basant sur les colonnes pertinentes :"
             )
-        if p:
-            self.path_var.set(p)
-            if stype == "Fichier CSV":
-                self._update_csv_columns(pathlib.Path(p))
+            paths = filedialog.askopenfilenames(
+                filetypes=[("CSV", "*.csv"), ("Tous", "*.*")]
+            )
+        elif stype.startswith("Dossier"):
+            p = filedialog.askdirectory()
+            paths = (p,) if p else ()
+        elif stype == "Mixte (images + textes + CSV)":
+            paths = filedialog.askopenfilenames(
+                filetypes=[
+                    (
+                        "Tous supportés",
+                        "*.png *.jpg *.jpeg *.gif *.webp *.bmp "
+                        "*.txt *.md *.html *.eml *.csv",
+                    ),
+                    ("Images", "*.png *.jpg *.jpeg *.gif *.webp *.bmp"),
+                    ("Textes", "*.txt *.md *.html *.eml"),
+                    ("CSV", "*.csv"),
+                    ("Tous", "*.*"),
+                ]
+            )
+        else:
+            paths = filedialog.askopenfilenames(
+                filetypes=[("Fichier", "*.csv *.txt *.jsonl"), ("Tous", "*.*")]
+            )
+        for p in paths:
+            self.paths_listbox.insert("end", p)
+        if stype == "Fichier(s) CSV" and paths:
+            self._update_csv_columns(pathlib.Path(paths[0]))
+
+    def _remove_selected(self) -> None:
+        for i in reversed(self.paths_listbox.curselection()):
+            self.paths_listbox.delete(i)
 
     def _update_csv_columns(self, csv_path: pathlib.Path) -> None:
         try:
@@ -155,34 +329,43 @@ class PrepareTab(ttk.Frame):
 
     def _generate(self) -> None:
         try:
-            src = pathlib.Path(self.path_var.get())
             out = pathlib.Path(self.out_var.get())
             prompt = self.prompt_var.get()
             stype = self.source_type.get()
+            sources = list(self.paths_listbox.get(0, "end"))
 
-            if not src.exists():
-                messagebox.showerror("Erreur", f"Le chemin n'existe pas :\n{src}")
+            if not sources:
+                messagebox.showerror("Erreur", "Ajoutez au moins une source.")
                 return
 
             if stype == "Dossier d'images":
-                n = intake_from_folder(src, out, prompt_template=prompt)
+                n = intake_from_folder(
+                    pathlib.Path(sources[0]), out, prompt_template=prompt
+                )
             elif stype.startswith("Dossier de fichiers texte"):
-                n = intake_from_text(src, out, prompt_template=prompt)
-            elif stype == "Fichier CSV":
-                col = self.column_var.get().strip()
-                if not col:
-                    messagebox.showerror(
-                        "Erreur",
-                        "Sélectionnez la colonne CSV qui contient le texte.",
-                    )
-                    return
-                n = intake_from_csv(src, out, column=col, prompt_template=prompt)
-            else:
-                n = intake_from_urls(src, out, prompt_template=prompt)
+                n = intake_from_text(
+                    pathlib.Path(sources[0]), out, prompt_template=prompt
+                )
+            elif stype == "Fichier(s) CSV":
+                paths = [pathlib.Path(p) for p in sources]
+                n = intake_from_csv_multi(
+                    paths, out, prompt_template=prompt or "{table}"
+                )
+            elif stype == "Mixte (images + textes + CSV)":
+                n = intake_mixed(
+                    [pathlib.Path(p) for p in sources],
+                    out,
+                    consigne=prompt,
+                )
+            else:  # URLs
+                n = intake_from_urls(
+                    pathlib.Path(sources[0]), out, prompt_template=prompt
+                )
 
             messagebox.showinfo(
                 "Succès",
-                f"{n} tâches écrites dans :\n{out}\n\nPassez à l'onglet « Lancer le traitement ».",
+                f"{n} tâches écrites dans :\n{out}\n\n"
+                "Passez à l'onglet « Lancer le traitement ».",
             )
         except Exception as e:
             messagebox.showerror("Erreur", str(e))
@@ -190,99 +373,125 @@ class PrepareTab(ttk.Frame):
 
 # ─── Onglet 2 : Lancement du traitement ────────────────────────
 class RunTab(ttk.Frame):
-    def __init__(self, master: tk.Misc) -> None:
+    def __init__(self, master: tk.Misc, on_success=None) -> None:
         super().__init__(master, padding=20)
         self._thread: threading.Thread | None = None
+        self._log_handler: _TextHandler | None = None
+        self._cancel_event: threading.Event | None = None
+        self._on_success_cb = on_success
         self._build()
 
     def _build(self) -> None:
         ttk.Label(self, text="Fichier d'entrée (.jsonl) :").grid(
-            row=0,
-            column=0,
-            sticky="w",
-            pady=(0, 4),
+            row=0, column=0, sticky="w", pady=(0, 4)
         )
         self.input_var = tk.StringVar()
         ttk.Entry(self, textvariable=self.input_var).grid(
-            row=1,
-            column=0,
-            columnspan=2,
-            sticky="ew",
+            row=1, column=0, columnspan=2, sticky="ew"
         )
-        ttk.Button(
-            self,
-            text="Parcourir…",
-            command=self._pick_input,
-        ).grid(row=1, column=2, padx=(6, 0))
+        ttk.Button(self, text="Parcourir…", command=self._pick_input).grid(
+            row=1, column=2, padx=(6, 0)
+        )
 
-        ttk.Label(self, text="Fichier de résultats (.jsonl) :").grid(
-            row=2,
-            column=0,
-            sticky="w",
-            pady=(12, 4),
+        ttk.Label(self, text="Fichier de résultats (auto si vide) :").grid(
+            row=2, column=0, sticky="w", pady=(12, 4)
         )
-        self.output_var = tk.StringVar(
-            value=str(pathlib.Path.cwd() / "results.jsonl"),
-        )
+        self.output_var = tk.StringVar()
         ttk.Entry(self, textvariable=self.output_var).grid(
-            row=3,
-            column=0,
-            columnspan=2,
-            sticky="ew",
+            row=3, column=0, columnspan=2, sticky="ew"
         )
         ttk.Button(
-            self,
-            text="Enregistrer sous…",
-            command=self._pick_output,
+            self, text="Enregistrer sous…", command=self._pick_output
         ).grid(row=3, column=2, padx=(6, 0))
 
-        ttk.Label(self, text="Configuration (models.yaml) :").grid(
-            row=4,
-            column=0,
-            sticky="w",
-            pady=(12, 4),
+        self._advanced_frame = ttk.LabelFrame(
+            self, text="Options avancées", padding=10
         )
-        self.config_var = tk.StringVar(
-            value=str(pathlib.Path.cwd() / "config" / "models.yaml"),
+        self._advanced_frame.grid(
+            row=4, column=0, columnspan=3, sticky="ew", pady=(12, 0)
         )
-        ttk.Entry(self, textvariable=self.config_var).grid(
-            row=5,
-            column=0,
-            columnspan=2,
-            sticky="ew",
+        self._advanced_frame.grid_remove()
+
+        ttk.Label(
+            self._advanced_frame,
+            text="Configuration (models.yaml, vide = intégrée) :",
+        ).grid(row=0, column=0, sticky="w", pady=(0, 4))
+        self.config_var = tk.StringVar()
+        ttk.Entry(self._advanced_frame, textvariable=self.config_var).grid(
+            row=1, column=0, columnspan=2, sticky="ew"
         )
         ttk.Button(
-            self,
-            text="Parcourir…",
-            command=self._pick_config,
-        ).grid(row=5, column=2, padx=(6, 0))
+            self._advanced_frame, text="Parcourir…", command=self._pick_config
+        ).grid(row=1, column=2, padx=(6, 0))
 
-        ttk.Label(self, text="Budget maximal (€, optionnel) :").grid(
-            row=6,
-            column=0,
-            sticky="w",
-            pady=(12, 4),
-        )
+        ttk.Label(
+            self._advanced_frame, text="Budget maximal (€) :"
+        ).grid(row=2, column=0, sticky="w", pady=(8, 4))
         self.max_cost_var = tk.StringVar()
-        ttk.Entry(self, textvariable=self.max_cost_var).grid(
-            row=7,
-            column=0,
-            sticky="ew",
+        ttk.Entry(
+            self._advanced_frame, textvariable=self.max_cost_var
+        ).grid(row=3, column=0, sticky="ew")
+
+        self._advanced_btn = ttk.Button(
+            self,
+            text="Afficher les options avancées",
+            command=self._toggle_advanced,
         )
+        self._advanced_btn.grid(row=5, column=0, columnspan=3, pady=(8, 0))
+
+        # Boutons Lancer + Annuler côte à côte
+        action_frame = ttk.Frame(self)
+        action_frame.grid(row=6, column=0, columnspan=3, sticky="ew", pady=20)
+        action_frame.columnconfigure(0, weight=1)
+        action_frame.columnconfigure(1, weight=1)
 
         self.run_btn = ttk.Button(
-            self,
-            text="Lancer le traitement",
-            command=self._launch,
+            action_frame, text="Lancer le traitement", command=self._launch
         )
-        self.run_btn.grid(row=8, column=0, columnspan=3, pady=20)
+        self.run_btn.grid(row=0, column=0, sticky="ew", padx=(0, 4))
+
+        self.cancel_btn = ttk.Button(
+            action_frame,
+            text="Annuler",
+            command=self._cancel,
+            state="disabled",
+        )
+        self.cancel_btn.grid(row=0, column=1, sticky="ew", padx=(4, 0))
 
         self.progress = ttk.Progressbar(self, mode="indeterminate")
-        self.progress.grid(row=9, column=0, columnspan=3, sticky="ew")
+        self.progress.grid(row=7, column=0, columnspan=3, sticky="ew")
+
+        log_frame = ttk.Frame(self)
+        log_frame.grid(row=8, column=0, columnspan=3, sticky="nsew", pady=(10, 0))
+        self.rowconfigure(8, weight=1)
+        self.columnconfigure(0, weight=1)
+        self.log_text = tk.Text(
+            log_frame, height=10, wrap="word", state="disabled"
+        )
+        self.log_text.pack(side="left", fill="both", expand=True)
+        scroll = ttk.Scrollbar(
+            log_frame, orient="vertical", command=self.log_text.yview
+        )
+        scroll.pack(side="right", fill="y")
+        self.log_text.config(yscrollcommand=scroll.set)
+
+    def _toggle_advanced(self) -> None:
+        if self._advanced_frame.winfo_viewable():
+            self._advanced_frame.grid_remove()
+            self._advanced_btn.config(text="Afficher les options avancées")
+        else:
+            self._advanced_frame.grid()
+            self._advanced_btn.config(text="Masquer les options avancées")
+
+    def _append_log(self, msg: str) -> None:
+        self.log_text.config(state="normal")
+        self.log_text.insert("end", msg + "\n")
+        self.log_text.see("end")
+        self.log_text.config(state="disabled")
 
     def _pick_input(self) -> None:
         p = filedialog.askopenfilename(
-            filetypes=[("JSONL", "*.jsonl"), ("Tous", "*.*")],
+            filetypes=[("JSONL", "*.jsonl"), ("Tous", "*.*")]
         )
         if p:
             self.input_var.set(p)
@@ -297,24 +506,43 @@ class RunTab(ttk.Frame):
 
     def _pick_config(self) -> None:
         p = filedialog.askopenfilename(
-            filetypes=[("YAML", "*.yaml *.yml"), ("Tous", "*.*")],
+            filetypes=[("YAML", "*.yaml *.yml"), ("Tous", "*.*")]
         )
         if p:
             self.config_var.set(p)
 
+    def _cancel(self) -> None:
+        if self._cancel_event is not None and not self._cancel_event.is_set():
+            self._cancel_event.set()
+            self._append_log(
+                "⚠ Annulation demandée, arrêt après la tâche en cours…"
+            )
+
     def _launch(self) -> None:
         if self._thread and self._thread.is_alive():
-            messagebox.showwarning("En cours", "Un traitement est déjà en cours.")
+            messagebox.showwarning(
+                "En cours", "Un traitement est déjà en cours."
+            )
             return
 
         inp = pathlib.Path(self.input_var.get())
-        out = pathlib.Path(self.output_var.get())
-        cfg = pathlib.Path(self.config_var.get())
         if not inp.exists():
-            messagebox.showerror("Erreur", f"Fichier d'entrée introuvable : {inp}")
+            messagebox.showerror(
+                "Erreur", f"Fichier d'entrée introuvable : {inp}"
+            )
             return
-        if not cfg.exists():
-            messagebox.showerror("Erreur", f"Configuration introuvable : {cfg}")
+
+        out_raw = self.output_var.get().strip()
+        out = pathlib.Path(out_raw) if out_raw else inp.with_name("results.jsonl")
+
+        cfg_raw = self.config_var.get().strip()
+        cfg_file: pathlib.Path | None = (
+            pathlib.Path(cfg_raw) if cfg_raw else None
+        )
+        if cfg_file is not None and not cfg_file.exists():
+            messagebox.showerror(
+                "Erreur", f"Configuration introuvable : {cfg_file}"
+            )
             return
 
         max_cost = None
@@ -323,20 +551,64 @@ class RunTab(ttk.Frame):
             try:
                 max_cost = float(raw)
             except ValueError:
-                messagebox.showerror("Erreur", "Budget invalide (nombre attendu).")
+                messagebox.showerror(
+                    "Erreur", "Budget invalide (nombre attendu)."
+                )
                 return
 
+        try:
+            from gateway_llm.secrets import get_backend
+
+            backend = get_backend()
+            if not backend.is_available():
+                messagebox.showerror(
+                    "Secrets indisponibles",
+                    f"Le backend '{backend.name}' est configuré mais non "
+                    "opérationnel.\n\nVérifiez l'onglet Configuration, ou "
+                    "relancez setup-secrets.",
+                )
+                return
+        except Exception as e:
+            messagebox.showerror(
+                "Secrets non configurés",
+                f"{e}\n\nOuvrez l'onglet Configuration pour en choisir un.",
+            )
+            return
+
+        self._cancel_event = threading.Event()
         self.progress.start(10)
         self.run_btn.config(state="disabled")
+        self.cancel_btn.config(state="normal")
+        self._append_log(f"Lancement sur {inp.name} → {out.name}")
+        self._append_log(
+            f"Config : {cfg_file}"
+            if cfg_file is not None
+            else "Config : intégrée (par défaut)"
+        )
+
+        if self._log_handler is None:
+            self._log_handler = _TextHandler(self.log_text)
+            logging.getLogger("gateway_llm").addHandler(self._log_handler)
 
         def worker() -> None:
             try:
                 from gateway_llm.batch import BatchRunner
                 from gateway_llm.config import load_config
-                from gateway_llm.hardware import detect_vram
+                from gateway_llm.hardware import detect_hardware
+                from gateway_llm.logging import configure as configure_logging
 
-                config = load_config(cfg)
-                hw = detect_vram()
+                configure_logging(level="INFO")
+
+                self.after(0, self._append_log, "Chargement de la config…")
+                config = load_config(cfg_file)
+                hw = detect_hardware()
+                self.after(
+                    0,
+                    self._append_log,
+                    f"VRAM={hw.vram_gb or '?'} Go, "
+                    f"RAM dispo={hw.ram_available_gb or '?'} Go, "
+                    f"disque={hw.disk_free_gb or '?'} Go",
+                )
                 runner = BatchRunner(
                     config=config,
                     input_path=inp,
@@ -344,10 +616,11 @@ class RunTab(ttk.Frame):
                     hardware=hw,
                     max_cost_eur=max_cost,
                 )
+                runner._cancel_event = self._cancel_event
                 runner.run()
-                self.after(0, lambda: self._on_success(out))
+                self.after(0, self._on_success, out)
             except Exception as e:
-                self.after(0, lambda err=e: self._on_error(err))  # type: ignore[misc]
+                self.after(0, self._on_error, e)
 
         self._thread = threading.Thread(target=worker, daemon=True)
         self._thread.start()
@@ -355,15 +628,22 @@ class RunTab(ttk.Frame):
     def _on_success(self, output: pathlib.Path) -> None:
         self.progress.stop()
         self.run_btn.config(state="normal")
+        self.cancel_btn.config(state="disabled")
+        self._append_log(f"✅ Terminé : {output}")
+        if self._on_success_cb is not None:
+            self._on_success_cb(output)
         messagebox.showinfo(
-            "Terminé",
-            f"Traitement terminé.\nRésultats dans :\n{output}",
+            "Terminé", f"Traitement terminé.\nRésultats dans :\n{output}"
         )
 
     def _on_error(self, exc: Exception) -> None:
         self.progress.stop()
         self.run_btn.config(state="normal")
-        messagebox.showerror("Erreur", f"Le traitement a échoué :\n{exc}")
+        self.cancel_btn.config(state="disabled")
+        self._append_log(f"❌ {exc}")
+        messagebox.showerror(
+            "Erreur", f"Le traitement a échoué :\n{exc}"
+        )
 
 
 # ─── Onglet 3 : Visualisation des résultats ────────────────────
@@ -371,38 +651,35 @@ class ResultsTab(ttk.Frame):
     def __init__(self, master: tk.Misc) -> None:
         super().__init__(master, padding=20)
         self._results: list[dict] = []
+        self._last_mtime: float = 0.0
+        self._auto_path: pathlib.Path | None = None
         self._build()
 
     def _build(self) -> None:
         top = ttk.Frame(self)
         top.pack(fill="x", pady=(0, 10))
-        ttk.Label(top, text="Fichier de résultats (.jsonl) :").pack(
-            side="left",
-        )
+        ttk.Label(top, text="Fichier de résultats (.jsonl) :").pack(side="left")
         self.file_var = tk.StringVar()
         ttk.Entry(top, textvariable=self.file_var).pack(
-            side="left",
-            fill="x",
-            expand=True,
-            padx=(8, 8),
+            side="left", fill="x", expand=True, padx=(8, 8)
         )
+        ttk.Button(
+            top, text="Parcourir…", command=self._pick
+        ).pack(side="left", padx=(0, 4))
         ttk.Button(top, text="Charger", command=self._load).pack(side="left")
 
         self.notebook = ttk.Notebook(self)
         self.notebook.pack(fill="both", expand=True)
 
-        # Onglet Résumé
+        # Résumé
         self.summary_frame = ttk.Frame(self.notebook, padding=10)
         self.notebook.add(self.summary_frame, text="Résumé")
         self.summary_text = tk.Text(
-            self.summary_frame,
-            wrap="word",
-            height=20,
-            state="disabled",
+            self.summary_frame, wrap="word", height=20, state="disabled"
         )
         self.summary_text.pack(fill="both", expand=True)
 
-        # Onglet À revoir
+        # À revoir
         self.review_frame = ttk.Frame(self.notebook, padding=10)
         self.notebook.add(self.review_frame, text="À revoir")
         self.review_list = tk.Listbox(self.review_frame)
@@ -419,26 +696,27 @@ class ResultsTab(ttk.Frame):
         self.detail_frame = ttk.Frame(self.review_frame, padding=10)
         self.detail_frame.pack(fill="both", expand=True, padx=(10, 0))
         self.detail_text = tk.Text(
-            self.detail_frame,
-            wrap="word",
-            height=12,
-            state="disabled",
+            self.detail_frame, wrap="word", height=12, state="disabled"
+        )
+        self.detail_text = tk.Text(
+            self.detail_frame, wrap="word", height=12, state="disabled"
         )
         self.detail_text.pack(fill="both", expand=True)
-        btn_frame = ttk.Frame(self.detail_frame)
-        btn_frame.pack(fill="x", pady=(6, 0))
-        ttk.Button(
-            btn_frame,
-            text="Accepter",
-            command=self._accept,
-        ).pack(side="left", padx=(0, 6))
-        ttk.Button(
-            btn_frame,
-            text="Rejeter",
-            command=self._reject,
-        ).pack(side="left")
+        # Tags markdown (configurés une seule fois)
+        self.detail_text.tag_configure("h1", font=("TkDefaultFont", 14, "bold"))
+        self.detail_text.tag_configure("h2", font=("TkDefaultFont", 12, "bold"))
+        self.detail_text.tag_configure("h3", font=("TkDefaultFont", 10, "bold"))
+        self.detail_text.tag_configure("bold", font=("TkDefaultFont", 10, "bold"))
+        self.detail_text.tag_configure("italic", font=("TkDefaultFont", 10, "italic"))
+        self.detail_text.tag_configure(
+            "code", font=("Courier", 10), background="#f0f0f0"
+        )
+        self.detail_text.tag_configure(
+            "codeblock", font=("Courier", 10), background="#f4f4f4"
+        )
+        self.detail_text.tag_configure("quote", lmargin1=20, lmargin2=20, foreground="#666")
 
-        # Onglet Tout
+        # Tout
         self.all_frame = ttk.Frame(self.notebook, padding=10)
         self.notebook.add(self.all_frame, text="Tout")
         self.all_tree = ttk.Treeview(
@@ -457,31 +735,84 @@ class ResultsTab(ttk.Frame):
             self.all_tree.column(col, width=120)
         self.all_tree.pack(fill="both", expand=True)
 
-    def _load(self) -> None:
-        path = pathlib.Path(self.file_var.get())
-        if not path.exists():
-            messagebox.showerror("Erreur", f"Fichier introuvable : {path}")
+    # ─── Auto-refresh ─────────────────────────────────────────
+    def start_auto_refresh(self, path: pathlib.Path) -> None:
+        """Démarre le polling du fichier pour rafraîchir l'affichage."""
+        self._auto_path = path
+        self.file_var.set(str(path))
+        self._last_mtime = 0.0
+        self._poll()
+
+    def _poll(self) -> None:
+        if self._auto_path is None:
             return
+        try:
+            mtime = self._auto_path.stat().st_mtime
+            if mtime != self._last_mtime:
+                self._last_mtime = mtime
+                self._load()
+        except FileNotFoundError:
+            pass
+        except Exception as e:
+            log.debug("Poll échoué : %s", e)
+        self.after(2000, self._poll)
+
+    def _pick(self) -> None:
+        p = filedialog.askopenfilename(
+            filetypes=[("JSONL", "*.jsonl"), ("Tous", "*.*")]
+        )
+        if p:
+            self.file_var.set(p)
+            self._auto_path = None  # désactive l'auto-refresh en mode manuel
+            self._load()
+
+    def _load(self) -> None:
+        raw = self.file_var.get().strip().strip('"').strip("'")
+        if not raw:
+            return
+        path = pathlib.Path(raw)
+        if path.is_dir():
+            candidate = path / "results.jsonl"
+            if candidate.exists():
+                path = candidate
+            else:
+                return
+        if not path.exists():
+            return
+
         self._results = []
-        with path.open("r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    self._results.append(json.loads(line))
-                except json.JSONDecodeError:
-                    continue
+        try:
+            with path.open("r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        self._results.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        continue
+        except OSError:
+            return
+
+        # Dédoublonne par id (dernier record gagne)
+        seen: dict[str, dict] = {}
+        for r in self._results:
+            rid = r.get("id")
+            if rid:
+                seen[rid] = r
+        self._results = list(seen.values())
         self._refresh()
 
     def _refresh(self) -> None:
-        # Résumé
         total = len(self._results)
-        approved = sum(1 for r in self._results if r.get("status") == "approved")
+        approved = sum(
+            1 for r in self._results if r.get("status") == "approved"
+        )
         review = sum(
             1
             for r in self._results
-            if r.get("status") == "human_review" or r.get("guardrail_passed") is False
+            if r.get("status") == "human_review"
+            or r.get("guardrail_passed") is False
         )
         failed = total - approved - review
         total_cost = sum(r.get("cost_eur", 0.0) for r in self._results)
@@ -498,15 +829,16 @@ class ResultsTab(ttk.Frame):
         self.summary_text.insert("1.0", summary)
         self.summary_text.config(state="disabled")
 
-        # À revoir
         self.review_list.delete(0, "end")
         for r in self._results:
-            if r.get("status") == "human_review" or r.get("guardrail_passed") is False:
+            if (
+                r.get("status") == "human_review"
+                or r.get("guardrail_passed") is False
+            ):
                 rid = r.get("id", "?")
                 reason = r.get("guardrail_reason", "—")
                 self.review_list.insert("end", f"{rid}  —  {reason}")
 
-        # Tout
         for item in self.all_tree.get_children():
             self.all_tree.delete(item)
         for r in self._results:
@@ -530,22 +862,68 @@ class ResultsTab(ttk.Frame):
         target = None
         count = 0
         for r in self._results:
-            if r.get("status") == "human_review" or r.get("guardrail_passed") is False:
+            if (
+                r.get("status") == "human_review"
+                or r.get("guardrail_passed") is False
+            ):
                 if count == idx:
                     target = r
                     break
                 count += 1
         if target is None:
             return
-        text = (
-            f"ID : {target.get('id')}\n"
-            f"Raison : {target.get('guardrail_reason', '—')}\n\n"
-            f"Réponse :\n{target.get('response', '—')}"
+        header = (
+            f"**ID :** `{target.get('id')}`\n"
+            f"**Raison :** {target.get('guardrail_reason', '—')}\n\n"
+            f"---\n\n"
         )
+        self._render_markdown(header + target.get("response", "_(pas de réponse)_"))
+
+    def _render_markdown(self, md_text: str) -> None:
+        """Affiche du markdown dans le widget read-only avec tags."""
+
         self.detail_text.config(state="normal")
         self.detail_text.delete("1.0", "end")
-        self.detail_text.insert("1.0", text)
+
+        in_code = False
+        for line in md_text.split("\n"):
+            if line.strip().startswith("```"):
+                in_code = not in_code
+                continue
+            if in_code:
+                self.detail_text.insert("end", line + "\n", "codeblock")
+                continue
+            if line.startswith("### "):
+                self.detail_text.insert("end", line[4:] + "\n", "h3")
+            elif line.startswith("## "):
+                self.detail_text.insert("end", line[3:] + "\n", "h2")
+            elif line.startswith("# "):
+                self.detail_text.insert("end", line[2:] + "\n", "h1")
+            elif line.startswith("> "):
+                self.detail_text.insert("end", line[2:] + "\n", "quote")
+            elif line.lstrip().startswith(("- ", "* ")):
+                self.detail_text.insert("end", "  • " + line.lstrip()[2:] + "\n")
+            else:
+                self._insert_inline(line + "\n")
+
         self.detail_text.config(state="disabled")
+
+    def _insert_inline(self, text: str) -> None:
+        """Insère une ligne en gérant **gras**, *italique*, `code`."""
+        import re
+
+        pattern = re.compile(r"(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`)")
+        for part in pattern.split(text):
+            if not part:
+                continue
+            if part.startswith("**") and part.endswith("**"):
+                self.detail_text.insert("end", part[2:-2], "bold")
+            elif part.startswith("*") and part.endswith("*"):
+                self.detail_text.insert("end", part[1:-1], "italic")
+            elif part.startswith("`") and part.endswith("`"):
+                self.detail_text.insert("end", part[1:-1], "code")
+            else:
+                self.detail_text.insert("end", part)
 
     def _accept(self) -> None:
         self._decision("accepted")
@@ -561,7 +939,10 @@ class ResultsTab(ttk.Frame):
         target = None
         count = 0
         for r in self._results:
-            if r.get("status") == "human_review" or r.get("guardrail_passed") is False:
+            if (
+                r.get("status") == "human_review"
+                or r.get("guardrail_passed") is False
+            ):
                 if count == idx:
                     target = r
                     break
@@ -573,10 +954,7 @@ class ResultsTab(ttk.Frame):
         with decisions_path.open("a", encoding="utf-8") as f:
             f.write(
                 json.dumps(
-                    {
-                        "id": target.get("id"),
-                        "decision": decision,
-                    }
+                    {"id": target.get("id"), "decision": decision}
                 )
                 + "\n"
             )
@@ -586,49 +964,18 @@ class ResultsTab(ttk.Frame):
         )
 
 
-# ─── Application principale ────────────────────────────────────
-class App(tk.Tk):
-    def __init__(self) -> None:
-        super().__init__()
-        self.title("gateway-llm — Traitement par lot")
-        self.geometry("900x650")
-
-        notebook = ttk.Notebook(self)
-        notebook.pack(fill="both", expand=True, padx=10, pady=10)
-
-        # Onglet Configuration EN PREMIER (obligatoire avant le reste)
-        self.secrets_tab = SecretsTab(notebook)
-        notebook.add(self.secrets_tab, text="Configuration")
-
-        self.prepare_tab = PrepareTab(notebook)
-        notebook.add(self.prepare_tab, text="1. Préparer les données")
-
-        self.run_tab = RunTab(notebook)
-        notebook.add(self.run_tab, text="2. Lancer le traitement")
-
-        self.results_tab = ResultsTab(notebook)
-        notebook.add(self.results_tab, text="3. Voir les résultats")
-
-        # Au premier lancement, ouvrir directement l'onglet Configuration
-        config_file = pathlib.Path.home() / ".gateway-llm" / "secrets.yaml"
-        if not config_file.exists():
-            notebook.select(self.secrets_tab)
-            messagebox.showinfo(
-                "Configuration requise",
-                "Avant de commencer, choisissez où stocker vos clés API "
-                "dans l'onglet Configuration.",
-            )
-
-
+# ─── Onglet Configuration des secrets ──────────────────────────
 class SecretsTab(ttk.Frame):
     def __init__(self, master: tk.Misc) -> None:
         super().__init__(master, padding=20)
         self._build()
 
     def _build(self) -> None:
-        ttk.Label(self, text="Coffre-fort de secrets", font=("", 12, "bold")).pack(
-            anchor="w", pady=(0, 12)
-        )
+        ttk.Label(
+            self,
+            text="Coffre-fort de secrets",
+            font=("", 12, "bold"),
+        ).pack(anchor="w", pady=(0, 12))
 
         self.backend_var = tk.StringVar(value="powershell_vault")
         backends = [
@@ -650,19 +997,25 @@ class SecretsTab(ttk.Frame):
         self.options_frame = ttk.Frame(self)
         self.options_frame.pack(fill="x", pady=(12, 12))
 
-        ttk.Button(self, text="Enregistrer la configuration", command=self._save).pack(pady=8)
-        ttk.Button(self, text="Tester la connexion", command=self._test).pack(pady=4)
+        ttk.Button(
+            self,
+            text="Enregistrer la configuration",
+            command=self._save,
+        ).pack(pady=8)
+        ttk.Button(
+            self, text="Tester la connexion", command=self._test
+        ).pack(pady=4)
 
         self.status_var = tk.StringVar()
-        ttk.Label(self, textvariable=self.status_var, foreground="gray").pack(
-            anchor="w", pady=(8, 0)
-        )
+        ttk.Label(
+            self, textvariable=self.status_var, foreground="gray"
+        ).pack(anchor="w", pady=(8, 0))
 
     def _save(self) -> None:
         from gateway_llm.secrets import save_backend_config
 
         backend = self.backend_var.get()
-        options: dict[str, str] = {}  # <--- Modifie cette ligne
+        options: dict[str, str] = {}
         save_backend_config(backend, options)
         self.status_var.set(f"✅ Backend '{backend}' enregistré.")
 
@@ -672,11 +1025,123 @@ class SecretsTab(ttk.Frame):
 
             b = get_backend()
             ok = b.is_available()
-            self.status_var.set(
-                f"{'✅' if ok else '⚠'} {b.name} : {'opérationnel' if ok else 'non disponible'}"
-            )
+            if ok:
+                self.status_var.set(f"✅ {b.name} : opérationnel")
+            else:
+                reason = getattr(b, "_error", None) or "raison inconnue"
+                self.status_var.set(
+                    f"⚠ {b.name} : non disponible — {reason}"
+                )
         except Exception as e:
             self.status_var.set(f"❌ {e}")
+
+
+# ─── Application principale ────────────────────────────────────
+class App(_TkBase):  # type: ignore[misc]
+    def __init__(self) -> None:
+        super().__init__()
+        self.title("gateway-llm — Traitement par lot")
+        self.geometry("950x700")
+
+        self.status_var = tk.StringVar(value="Prêt")
+        self.status_bar = ttk.Label(
+            self, textvariable=self.status_var, anchor="w", relief="sunken"
+        )
+        self.status_bar.pack(side="bottom", fill="x")
+
+        # 1) Mode d'exécution au premier lancement
+        mode_file = pathlib.Path.home() / ".gateway-llm" / "config.yaml"
+        if not mode_file.exists():
+            dialog = ModeDialog(self)
+            self.wait_window(dialog)
+
+        # 2) Chromium Playwright (async)
+        self._ensure_playwright_async()
+
+        # 3) Notebook
+        notebook = ttk.Notebook(self)
+        notebook.pack(fill="both", expand=True, padx=10, pady=10)
+
+        self.secrets_tab = SecretsTab(notebook)
+        notebook.add(self.secrets_tab, text="Configuration")
+
+        self.prepare_tab = PrepareTab(notebook)
+        notebook.add(self.prepare_tab, text="1. Préparer les données")
+
+        # Drag & drop si tkinterdnd2 présent
+        if _DND_AVAILABLE and DND_FILES is not None:
+            try:
+                lb: Any = self.prepare_tab.paths_listbox
+                lb.drop_target_register(DND_FILES)
+                lb.dnd_bind("<<Drop>>", self.prepare_tab._on_drop)
+            except Exception as e:
+                log.info("Activation drag & drop échouée : %s", e)
+
+        self.results_tab = ResultsTab(notebook)
+        notebook.add(self.results_tab, text="3. Voir les résultats")
+
+        def _on_batch_done(output: pathlib.Path) -> None:
+            self.results_tab.start_auto_refresh(output)
+            notebook.select(self.results_tab)
+
+        self.run_tab = RunTab(notebook, on_success=_on_batch_done)
+        notebook.add(self.run_tab, text="2. Lancer le traitement")
+
+        # 4) Secrets au premier lancement
+        secrets_file = pathlib.Path.home() / ".gateway-llm" / "secrets.yaml"
+        if not secrets_file.exists():
+            notebook.select(self.secrets_tab)
+            messagebox.showinfo(
+                "Configuration requise",
+                "Avant de commencer, choisissez où stocker vos clés API "
+                "dans l'onglet Configuration.",
+            )
+
+    def _ensure_playwright_async(self) -> None:
+        def worker() -> None:
+            try:
+                from playwright.sync_api import sync_playwright  # noqa: F401
+            except ImportError:
+                log.info(
+                    "Playwright non installé, scraping utilisera l'API de secours"
+                )
+                self.after(
+                    0,
+                    self.status_var.set,
+                    "Playwright absent (fallback API pour le catalogue Ollama)",
+                )
+                return
+
+            self.after(
+                0, self.status_var.set, "Vérification de Chromium (Playwright)…"
+            )
+
+            if _playwright_chromium_ok():
+                self.after(
+                    0, self.status_var.set, "Chromium (Playwright) : prêt"
+                )
+                return
+
+            self.after(
+                0,
+                self.status_var.set,
+                "Installation de Chromium (Playwright) — quelques minutes…",
+            )
+            ok = _install_playwright_chromium()
+            if ok:
+                self.after(
+                    0,
+                    self.status_var.set,
+                    "Chromium (Playwright) installé",
+                )
+            else:
+                self.after(
+                    0,
+                    self.status_var.set,
+                    "⚠ Installation Chromium échouée (fallback API)",
+                )
+
+        threading.Thread(target=worker, daemon=True).start()
 
 
 def main() -> None:

@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Amandine Dennieau
 # SPDX-License-Identifier: Apache-2.0
 
-"""Téléchargement des modèles Ollama manquants.
+"""Téléchargement des modèles Ollama manquants + gestion du daemon.
 
 Appelé par `gateway-llm setup` et par le pre-flight de `batch run`.
 """
@@ -11,10 +11,62 @@ from __future__ import annotations
 import logging
 import shutil
 import subprocess
+import time
 
 import requests
 
 log = logging.getLogger(__name__)
+
+
+def ensure_ollama_daemon(ollama_url: str = "http://localhost:11434") -> bool:
+    """Vérifie que le daemon Ollama répond. Le lance sinon.
+
+    Retourne True si le daemon est joignable après l'opération.
+    Si `ollama` n'est pas installé, log un message clair et retourne False.
+    """
+    # 1) Test direct
+    try:
+        r = requests.get(f"{ollama_url}/api/tags", timeout=2)
+        if r.status_code == 200:
+            log.info("Daemon Ollama opérationnel")
+            return True
+    except requests.exceptions.RequestException:
+        pass
+
+    # 2) Binaire présent ?
+    if not shutil.which("ollama"):
+        log.error(
+            "Ollama introuvable dans le PATH. Téléchargez-le depuis "
+            "https://ollama.com/download puis relancez."
+        )
+        return False
+
+    # 3) Lancement en arrière-plan (jamais de shell=True)
+    log.info("Daemon Ollama injoignable, tentative de démarrage…")
+    try:
+        subprocess.Popen(
+            ["ollama", "serve"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    except OSError as e:
+        log.error("Impossible de lancer 'ollama serve' : %s", e)
+        return False
+
+    # 4) Attente : 20 tentatives de 1s
+    for attempt in range(20):
+        time.sleep(1)
+        try:
+            r = requests.get(f"{ollama_url}/api/tags", timeout=2)
+            if r.status_code == 200:
+                log.info("Daemon Ollama démarré (après %ds)", attempt + 1)
+                return True
+        except requests.exceptions.RequestException:
+            continue
+
+    log.error("Le daemon Ollama n'a pas démarré après 20s")
+    return False
 
 
 class Installer:
@@ -83,6 +135,11 @@ class Installer:
         return False
 
     def ensure_models(self, required: list[str]) -> int:
+        # Daemon d'abord : sinon /api/tags échoue systématiquement
+        if not ensure_ollama_daemon(self._ollama_url):
+            log.error("Daemon Ollama indisponible, impossible d'installer les modèles")
+            return 0
+
         try:
             r = requests.get(f"{self._ollama_url}/api/tags", timeout=5)
             r.raise_for_status()

@@ -39,11 +39,9 @@ def _build_aggregator(force: bool) -> BenchmarkAggregator:
 
 
 def _get_required_ollama_models(config_path: str | None) -> list[str]:
-    """Lit models.yaml et extrait les noms réels des modèles Ollama."""
-    if not config_path:
-        return []
+    """Lit la config (fichier ou intégrée) et extrait les modèles Ollama requis."""
     try:
-        cfg = load_config(config_path)
+        cfg = load_config(config_path)  # gère None → config intégrée
     except Exception as e:
         log.debug("Impossible de lire %s : %s", config_path, e)
         return []
@@ -56,7 +54,7 @@ def _get_required_ollama_models(config_path: str | None) -> list[str]:
 
 
 def _run_preflight(
-    config_path: str,
+    config_path: str | None,
     auto_install: bool,
     assume_yes: bool,
 ) -> bool:
@@ -250,7 +248,6 @@ def cmd_setup_secrets(args: argparse.Namespace) -> int:
     # Saisie des clés API (sauf backend env, où les clés sont déjà dans le shell)
     if backend != "env":
         print("\nSaisie des clés API (laisser vide pour ignorer) :")
-        setter = getattr(b, "set", None)
         for key in [
             "GROQ_API_KEY",
             "MISTRAL_API_KEY",
@@ -263,11 +260,7 @@ def cmd_setup_secrets(args: argparse.Namespace) -> int:
             val = input(f"  {key} : ").strip()
             if not val:
                 continue
-            if setter is None:
-                print("    ⚠️  Ce backend ne supporte pas l'écriture programmatique.")
-                print(f"    → Ajoutez '{key}' manuellement dans votre coffre-fort.")
-                continue
-            if setter(key, val):
+            if b.set(key, val):
                 print(f"    ✓ {key} enregistrée")
             else:
                 print(f"    ⚠️  Échec écriture {key}")
@@ -317,7 +310,6 @@ def cmd_intake(args: argparse.Namespace) -> int:
         n = m.intake_from_csv(
             pathlib.Path(args.path),
             pathlib.Path(args.output),
-            column=args.column,
             id_column=args.id_column,
             prompt_template=args.prompt,
             sensitivity=args.sensitivity,
@@ -348,7 +340,9 @@ def cmd_batch_run(args: argparse.Namespace) -> int:
             return 1
 
     cfg = load_config(args.config)
-    policy = load_policy(args.policy) if args.policy else None
+    # Policy de résidence : toujours appliquée (défaut embarqué si --policy absent).
+    # Sans policy, un task 'confidential' pourrait partir vers un cloud.
+    policy = load_policy(args.policy)
 
     hw = detect_vram()
     log.info("VRAM détectée: %s Go (%s)", hw.vram_gb, hw.source)
@@ -373,6 +367,7 @@ def cmd_batch_run(args: argparse.Namespace) -> int:
         classifier=classifier,
         classifier_model=args.classifier_model,
         disable_classifier=args.no_classifier,
+        ensure_markdown=not args.no_markdown,
         max_cost_eur=args.max_cost_eur,
     )
     runner.run()
@@ -390,17 +385,19 @@ Commandes disponibles :
 
 Exemples rapides :
   gateway-llm doctor
-      Vérifie que tout est en place.
+      Vérifie que tout est en place (config intégrée par défaut).
 
-  gateway-llm setup --config config/models.yaml
-      Télécharge les modèles Ollama manquants.
+  gateway-llm setup
+      Télécharge les modèles Ollama manquants (config intégrée).
 
   gateway-llm intake from-folder --path ./screenshots --output tasks.jsonl
       Convertit un dossier d'images en fichier de tâches.
 
-  gateway-llm batch run --input tasks.jsonl --output results.jsonl \\
-      --config config/models.yaml
-      Lance le traitement.
+  gateway-llm batch run --input tasks.jsonl --output results.jsonl
+      Lance le traitement avec la config intégrée.
+
+  gateway-llm batch run ... --config config/models.yaml
+      Idem avec une config personnalisée.
 
   gateway-llm batch run ... --dry-run
       Estime le coût sans appeler les modèles.
@@ -426,13 +423,16 @@ Sortie :
 """,
         "setup": """\
 Exemples :
-  gateway-llm setup --config config/models.yaml
-      Interactif : demande confirmation avant chaque pull.
+  gateway-llm setup
+      Interactif : config intégrée + demande confirmation avant chaque pull.
 
-  gateway-llm setup --config config/models.yaml --yes
+  gateway-llm setup --yes
       Non-interactif : installe tout ce qui manque.
 
-Le fichier config doit déclarer au moins un provider de type 'ollama'.
+  gateway-llm setup --config config/models.yaml
+      Utilise une config personnalisée.
+
+Sans --config, la config bootstrap intégrée est utilisée.
 """,
         "setup-secrets": """\
 Assistant interactif pour choisir et configurer un backend de secrets :
@@ -473,8 +473,8 @@ Sous-commandes :
 Options principales de `batch run` :
   --input PATH               Fichier d'entrée JSONL (une tâche par ligne)
   --output PATH              Fichier de sortie JSONL
-  --config PATH              Config des providers/modèles (YAML)
-  --policy PATH              Politique de résidence (YAML, optionnel)
+  --config PATH              Config YAML (défaut : config intégrée)
+  --policy PATH              Politique de résidence (YAML, défaut : intégrée)
   --resume                   Reprend un batch interrompu
   --dry-run                  Estime sans appeler les modèles
   --refresh-benchmarks       Rafraîchit les scores avant de router
@@ -518,7 +518,11 @@ def _make_parser() -> argparse.ArgumentParser:
         epilog=_epilog_for("doctor"),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    d.add_argument("--config", default=None, help="Config YAML pour découvrir les modèles requis")
+    d.add_argument(
+        "--config",
+        default=None,
+        help="Config YAML pour découvrir les modèles requis (défaut : intégrée)",
+    )
     d.set_defaults(func=cmd_doctor)
 
     # ─── setup ─────────────────────────────────────────────────
@@ -532,7 +536,11 @@ def _make_parser() -> argparse.ArgumentParser:
         epilog=_epilog_for("setup"),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    s.add_argument("--config", required=True, help="Config YAML des providers/modèles")
+    s.add_argument(
+        "--config",
+        default=None,
+        help="Config YAML des providers/modèles (défaut : intégrée)",
+    )
     s.add_argument("--yes", "-y", action="store_true", help="Auto-confirme chaque installation")
     s.set_defaults(func=cmd_setup)
 
@@ -563,7 +571,6 @@ def _make_parser() -> argparse.ArgumentParser:
     c = i_sub.add_parser("from-csv", help="Fichier CSV")
     c.add_argument("--path", required=True)
     c.add_argument("--output", required=True)
-    c.add_argument("--column", required=True, help="Nom de la colonne contenant le texte")
     c.add_argument("--id-column", default=None, help="Nom de la colonne d'ID (optionnel)")
     c.add_argument("--prompt", default="{content}")
     c.add_argument("--sensitivity", default="public")
@@ -605,10 +612,23 @@ def _make_parser() -> argparse.ArgumentParser:
         help="Lancer un batch JSONL",
         description="Lance un batch de traitement avec pre-flight automatique.",
     )
+    run.add_argument(
+        "--no-markdown",
+        action="store_true",
+        help="Désactive l'instruction 'Réponds en Markdown'",
+    )
     run.add_argument("--input", required=True, help="Fichier d'entrée JSONL")
     run.add_argument("--output", required=True, help="Fichier de sortie JSONL")
-    run.add_argument("--config", required=True, help="Config YAML")
-    run.add_argument("--policy", default=None, help="Politique de résidence (YAML)")
+    run.add_argument(
+        "--config",
+        default=None,
+        help="Config YAML (défaut : config intégrée)",
+    )
+    run.add_argument(
+        "--policy",
+        default=None,
+        help="Politique de résidence YAML (défaut : politique intégrée)",
+    )
     run.add_argument("--resume", action="store_true", help="Reprendre un batch interrompu")
     run.add_argument("--dry-run", action="store_true", help="Estimer sans appeler les modèles")
     run.add_argument(
@@ -633,6 +653,7 @@ def _make_parser() -> argparse.ArgumentParser:
     run.add_argument("--yes", "-y", action="store_true", help="Auto-confirmer les installations")
     run.add_argument("--verbose", "-v", action="store_true")
     run.set_defaults(func=cmd_batch_run)
+
     # ─── setup-secrets ─────────────────────────────────────────
     ss = sub.add_parser(
         "setup-secrets",

@@ -15,6 +15,7 @@ class FakeProvider(Provider):
         self.name = name
         self._outcomes = list(outcomes)
         self.call_count = 0
+        self.last_prompt: str | None = None
 
     def complete(
         self,
@@ -24,6 +25,7 @@ class FakeProvider(Provider):
         temperature: float = 0.3,
         image_b64: str | None = None,
     ):
+        self.last_prompt = prompt
         if self.call_count >= len(self._outcomes):
             raise RuntimeError(f"{self.name}: plus d'outcomes scriptés")
         outcome = self._outcomes[self.call_count]

@@ -131,13 +131,27 @@ def test_vault_set_escapes(mock_run, _mock_which):
 @patch("gateway_llm.secrets.shutil.which", return_value="/usr/bin/pwsh")
 @patch("gateway_llm.secrets.subprocess.run")
 def test_vault_caches_result(mock_run, _mock_which):
+    """Le cache de get() évite les appels subprocess répétés."""
     mock_run.return_value = MagicMock(returncode=0, stdout="v", stderr="")
     backend = PowerShellVaultBackend()
     backend.get("MY_SECRET")
     backend.get("MY_SECRET")
     backend.get("MY_SECRET")
-    assert mock_run.call_count == 1
+    # 1er get() = 1 probe (_resolve_exe) + 1 get réel = 2 appels
+    # 2e et 3e get() = cache hit → 0 appel
+    assert mock_run.call_count == 2
 
+@patch("gateway_llm.secrets.shutil.which", return_value="/usr/bin/pwsh")
+@patch("gateway_llm.secrets.subprocess.run")
+def test_vault_probe_cached_across_keys(mock_run, _mock_which):
+    """_resolve_exe ne probe qu'une fois, même pour plusieurs clés."""
+    mock_run.return_value = MagicMock(returncode=0, stdout="v", stderr="")
+    backend = PowerShellVaultBackend()
+    backend.get("KEY1")
+    backend.get("KEY2")
+    # 1 probe + 2 get = 3 appels.
+    # Sans cache du probe : 2 probes + 2 get = 4.
+    assert mock_run.call_count == 3
 
 @patch("gateway_llm.secrets.shutil.which", return_value="/usr/bin/pwsh")
 @patch("gateway_llm.secrets.subprocess.run")
@@ -163,27 +177,30 @@ def test_vault_strips_line_endings(mock_run, _mock_which):
 
 
 @patch("gateway_llm.secrets.shutil.which", return_value=None)
-def test_vault_no_powershell_raises(_mock_which):
-    with pytest.raises(RuntimeError, match="PowerShell"):
-        PowerShellVaultBackend()
+def test_vault_no_powershell_unavailable(_mock_which):
+    """PowerShell absent : pas de raise dans __init__, is_available() retourne False."""
+    backend = PowerShellVaultBackend()
+    assert backend.is_available() is False
+    assert backend.get("ANY_KEY") is None
 
 
 @patch("gateway_llm.secrets.shutil.which", return_value="/usr/bin/pwsh")
 @patch("gateway_llm.secrets.subprocess.run")
-def test_vault_is_available_when_vault_registered(mock_run, _mock_which):
-    mock_run.return_value = MagicMock(
-        returncode=0,
-        stdout='{"Name":"LocalVault"}',
-        stderr="",
-    )
+def test_vault_is_available_when_module_present(mock_run, _mock_which):
+    """Module SecretManagement chargeable (returncode=0) → is_available() == True."""
+    mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
     assert PowerShellVaultBackend().is_available() is True
 
 
 @patch("gateway_llm.secrets.shutil.which", return_value="/usr/bin/pwsh")
 @patch("gateway_llm.secrets.subprocess.run")
-def test_vault_is_available_no_vault(mock_run, _mock_which):
-    """Sortie vide ou 'null' = aucun vault enregistré."""
-    mock_run.return_value = MagicMock(returncode=0, stdout="null", stderr="")
+def test_vault_is_available_fails_when_module_missing(mock_run, _mock_which):
+    """Module absent (returncode != 0) → is_available() == False."""
+    mock_run.return_value = MagicMock(
+        returncode=1,
+        stdout="",
+        stderr="Module SecretManagement introuvable",
+    )
     assert PowerShellVaultBackend().is_available() is False
 
 

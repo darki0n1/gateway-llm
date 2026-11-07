@@ -38,9 +38,12 @@ dependencies = [
     # Parsing HTML pour intake from-urls
     "beautifulsoup4>=4.12",
     # Backends de secrets cloud (installés par défaut, sélection au runtime)
-    "boto3>=1.34",                        # AWS Secrets Manager
-    "azure-identity>=1.15",               # Azure Key Vault
+    "boto3>=1.34",
+    "azure-identity>=1.15",
     "azure-keyvault-secrets>=4.9",
+    "psutil>=5.9",                # RAM + disque
+    "playwright>=1.40",
+    "tkinterdnd2>=0.4",
 ]
 
 # ─── Réservé aux développeurs qui contribuent au code ────────

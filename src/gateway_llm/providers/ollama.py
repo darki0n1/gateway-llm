@@ -41,14 +41,17 @@ class OllamaProvider(Provider):
 
         payload: Any = {
             "model": model,
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": [message],
             "stream": False,
-            "think": False,
             "options": {"temperature": temperature, "num_predict": max_tokens},
         }
 
         try:
-            resp = requests.post(f"{self.base_url}/api/chat", json=payload, timeout=self._timeout)  # type: ignore[arg-type]
+            resp = requests.post(
+                f"{self.base_url}/api/chat",
+                json=payload,
+                timeout=self._timeout,
+            )
             resp.raise_for_status()
         except requests.exceptions.RequestException as e:
             raise ProviderError(f"{self.name}: {e}") from e

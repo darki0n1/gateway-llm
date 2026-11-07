@@ -1,12 +1,12 @@
 # SPDX-FileCopyrightText: 2026 Amandine Dennieau
 # SPDX-License-Identifier: Apache-2.0
 
-name: Update Benchmarks (F5 / RWS)
+name: Update Benchmarks (F5 / RWS / Ollama Library)
 
 on:
   schedule:
     - cron: "0 4 */14 * *"   # tous les 14 jours à 4h UTC
-  workflow_dispatch:          # manuel possible
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -24,25 +24,36 @@ jobs:
           python-version: "3.12"
           cache: pip
 
+      # ─── 1. Installer TOUTES les dépendances de scraping d'abord ───
       - name: Installer dépendances de scraping
-        run: pip install requests beautifulsoup4
+        run: |
+          pip install requests beautifulsoup4 playwright
+          playwright install chromium --with-deps
 
+      # ─── 2. Scraping Ollama Library (Playwright + BS4) ───
+      - name: Rafraîchir Ollama Library
+        continue-on-error: true
+        run: python scripts/refresh_ollama_library.py
+
+      # ─── 3. Scraping F5 (BS4) ───
       - name: Rafraîchir F5
         continue-on-error: true
         run: python scripts/refresh_f5.py
 
+      # ─── 4. Scraping RWS (BS4) ───
       - name: Rafraîchir RWS
         continue-on-error: true
         run: python scripts/refresh_rws.py
 
+      # ─── 5. Commit si changements ───
       - name: Commit si changements
         run: |
           git config user.name "gateway-llm-bot"
           git config user.email "bot@users.noreply.github.com"
-          git add benchmarks_cache/f5_safety.json benchmarks_cache/rws_translation.json || true
+          git add benchmarks_cache/f5_safety.json benchmarks_cache/rws_translation.json benchmarks_cache/ollama_library.json || true
           if git diff --cached --quiet; then
             echo "Aucun changement, skip commit."
           else
-            git commit -m "chore: auto-update F5/RWS benchmarks ($(date +%Y-%m-%d))"
+            git commit -m "chore: auto-update benchmarks ($(date +%Y-%m-%d))"
             git push
           fi

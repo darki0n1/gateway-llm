@@ -43,8 +43,8 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: pip install ruff
-      - run: ruff check src/ tests/
-      - run: ruff format --check src/ tests/
+      - run: ruff check src/ tests/ scripts/
+      - run: ruff format --check src/ tests/ scripts/
 
   typecheck:
     name: Type check (mypy)
@@ -56,8 +56,9 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: pip install -e ".[dev]"
-      - run: mypy src/
-
+      - run: pip install playwright  # pour les types dans scripts/
+      - run: mypy src/ scripts/
+      
   security:
     name: Sécurité (bandit + pip-audit)
     runs-on: ubuntu-latest

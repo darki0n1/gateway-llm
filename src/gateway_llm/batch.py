@@ -10,6 +10,7 @@ import json
 import logging
 import os
 import pathlib
+import threading
 import time
 from dataclasses import dataclass, field
 
@@ -17,7 +18,7 @@ from gateway_llm.benchmarks.aggregator import BenchmarkAggregator
 from gateway_llm.budget import BudgetTracker
 from gateway_llm.checkpoint import Checkpoint
 from gateway_llm.classifier import ClassificationResult, TaskClassifier
-from gateway_llm.config import ModelsConfig, PolicyConfig
+from gateway_llm.config import LocalMode, ModelsConfig, PolicyConfig, load_local_mode
 from gateway_llm.guardrails.base import Guardrail
 from gateway_llm.guardrails.noop import NoOpGuardrail
 from gateway_llm.hardware import HardwareInfo
@@ -75,6 +76,7 @@ class BatchRunner:
         classifier: TaskClassifier | None = None,
         classifier_model: str = "qwen3:4b-instruct",
         disable_classifier: bool = False,
+        ensure_markdown: bool = True,
         max_cost_eur: float | None = None,
         resume: bool = False,
         dry_run: bool = False,
@@ -83,12 +85,12 @@ class BatchRunner:
         self._cfg = config
         self._in = input_path
         self._out = output_path
+        self._cancel_event: threading.Event | None = None
         self._policy = policy
         self._benchmarks = benchmarks
         self._hardware = hardware
         self._guardrail = guardrail or NoOpGuardrail()
 
-        # Résolution explicite du backend de secrets (pas de bascule silencieuse)
         if secrets is not None:
             self._secrets = secrets
         else:
@@ -104,20 +106,107 @@ class BatchRunner:
         self._classifier = classifier
         self._classifier_model = classifier_model
         self._disable_classifier = disable_classifier
+        self._ensure_markdown = ensure_markdown
         self._max_cost_eur = max_cost_eur
         self._resume = resume
         self._dry_run = dry_run
         self._sample_size = sample_size
 
     # ────────────────────────────────────────────────────────────
-    # Refresh lazy des benchmarks (au démarrage d'un batch)
+    # Sélection locale par benchmarks + hardware
+    # ────────────────────────────────────────────────────────────
+    def _build_default_benchmarks(self) -> BenchmarkAggregator:
+        from gateway_llm.benchmarks.benchlm import BenchLMAdapter
+        from gateway_llm.benchmarks.f5_safety import F5SafetyAdapter
+        from gateway_llm.benchmarks.rankllms import RankLLMsAdapter
+        from gateway_llm.benchmarks.rws_translation import RWSTranslationAdapter
+
+        return BenchmarkAggregator(
+            [
+                BenchLMAdapter(),
+                RankLLMsAdapter(),
+                F5SafetyAdapter(),
+                RWSTranslationAdapter(),
+            ],
+            force_refresh=False,
+        )
+
+    def _ensure_ollama_models(self) -> None:
+        """Bootstrap : install les modèles Ollama déclarés dans les chaînes."""
+        from gateway_llm.installer import Installer
+
+        ollama_provider = self._cfg.providers.get("ollama")
+        if ollama_provider is None or ollama_provider.type != "ollama":
+            return
+
+        required: set[str] = set()
+        for domain_cfg in self._cfg.domains.values():
+            for model_key in domain_cfg.chain:
+                mc = self._cfg.models.get(model_key)
+                if mc is None:
+                    continue
+                provider = self._cfg.providers.get(mc.provider)
+                if provider is not None and provider.type == "ollama":
+                    required.add(mc.model_name or model_key)
+
+        if "nomic-embed-text" in self._cfg.models:
+            required.add("nomic-embed-text")
+
+        if not self._disable_classifier:
+            required.add(self._classifier_model)
+
+        if not required:
+            return
+
+        log.info("Bootstrap Ollama : %s", ", ".join(sorted(required)))
+        try:
+            installer = Installer(interactive=False, assume_yes=True)
+            n = installer.ensure_models(sorted(required))
+            if n:
+                log.info("%d modèle(s) Ollama installé(s) (bootstrap)", n)
+        except Exception as e:
+            log.warning("Bootstrap Ollama échoué (non bloquant) : %s", e)
+
+    def _apply_local_mode(
+        self,
+        benchmarks: BenchmarkAggregator,
+        local_mode: LocalMode,
+    ) -> list[str] | None:
+        """Retourne les modèles à installer selon le mode (ou None)."""
+        if local_mode == LocalMode.CLOUD_ONLY:
+            log.info("Mode cloud-only : aucun modèle local")
+            return None
+
+        if local_mode in (LocalMode.LOCAL_ONLY, LocalMode.HYBRID):
+            from gateway_llm.hardware import detect_hardware
+            from gateway_llm.local_selector import select_local_models
+
+            hw = self._hardware or detect_hardware()
+            selected = select_local_models(
+                benchmarks, hw, domains=list(self._cfg.domains.keys())
+            )
+            to_install = sorted({m for models in selected.values() for m in models})
+            if to_install:
+                log.info(
+                    "Mode %s : %d modèle(s) local(aux) : %s",
+                    local_mode.value,
+                    len(to_install),
+                    ", ".join(to_install),
+                )
+            else:
+                log.warning(
+                    "Aucun modèle local sélectionnable (benchmarks ou hardware)"
+                )
+            return to_install
+
+        # DEFAULT
+        self._ensure_ollama_models()
+        return None
+
+    # ────────────────────────────────────────────────────────────
+    # Refresh lazy des benchmarks
     # ────────────────────────────────────────────────────────────
     def _maybe_refresh_benchmarks(self) -> None:
-        """Rafraîchit le cache benchmarks si plus vieux que N jours.
-
-        Contrôlé par la variable d'environnement gateway_llm_BENCHMARK_TTL_DAYS
-        (défaut: 14). Non bloquant : une erreur réseau est un simple warning.
-        """
         ttl_days = int(os.environ.get("GATEWAY_LLM_BENCHMARK_TTL_DAYS", "14"))
         cache_dir = pathlib.Path("benchmarks_cache")
 
@@ -130,27 +219,14 @@ class BatchRunner:
             if age_days < ttl_days:
                 log.info("Benchmarks à jour (%.1f jours < %d)", age_days, ttl_days)
                 return
-            log.info(
-                "Benchmarks obsolètes (%.1f jours), rafraîchissement…",
-                age_days,
-            )
+            log.info("Benchmarks obsolètes (%.1f jours), rafraîchissement…", age_days)
         else:
             log.info("Premier lancement : rafraîchissement initial des benchmarks")
 
         try:
             from gateway_llm.benchmarks.base import TaskCategory
-            from gateway_llm.benchmarks.benchlm import BenchLMAdapter
-            from gateway_llm.benchmarks.f5_safety import F5SafetyAdapter
-            from gateway_llm.benchmarks.rankllms import RankLLMsAdapter
-            from gateway_llm.benchmarks.rws_translation import RWSTranslationAdapter
 
-            sources = [
-                BenchLMAdapter(),
-                RankLLMsAdapter(),
-                F5SafetyAdapter(),
-                RWSTranslationAdapter(),
-            ]
-            agg = BenchmarkAggregator(sources, force_refresh=True)
+            agg = self._build_default_benchmarks()
             for cat in TaskCategory:
                 agg.get_scores(cat)
             log.info("Benchmarks rafraîchis")
@@ -158,7 +234,7 @@ class BatchRunner:
             log.warning("Rafraîchissement benchmarks échoué (non bloquant) : %s", e)
 
     # ────────────────────────────────────────────────────────────
-    # Construction des providers
+    # Providers
     # ────────────────────────────────────────────────────────────
     def _build_providers(self) -> dict[str, Provider]:
         providers: dict[str, Provider] = {}
@@ -203,7 +279,7 @@ class BatchRunner:
         return providers
 
     # ────────────────────────────────────────────────────────────
-    # Construction du classifieur
+    # Classifieur
     # ────────────────────────────────────────────────────────────
     def _build_classifier(
         self,
@@ -214,6 +290,19 @@ class BatchRunner:
             return None
         if self._classifier is not None:
             return self._classifier
+
+        mode = load_local_mode()
+
+        if mode == LocalMode.CLOUD_ONLY:
+            flex = providers.get("flexrouter")
+            if flex is not None:
+                log.info("Classifieur cloud-only via flexrouter (bucket 'low')")
+                return TaskClassifier(provider=flex, model="low")
+            log.warning(
+                "Mode cloud-only mais flexrouter absent : classification désactivée"
+            )
+            return None
+
         ollama = providers.get("ollama")
         if ollama is None:
             log.info("Pas de provider Ollama : classification désactivée")
@@ -235,9 +324,6 @@ class BatchRunner:
                 except json.JSONDecodeError as e:
                     log.warning("Ligne JSON invalide ignorée : %s", e)
 
-    # ────────────────────────────────────────────────────────────
-    # Estimation tokens
-    # ────────────────────────────────────────────────────────────
     @staticmethod
     def _estimate_tokens(text: str) -> int:
         return int(len(text.split()) * 1.3) + 10
@@ -283,15 +369,38 @@ class BatchRunner:
     # Run réel
     # ────────────────────────────────────────────────────────────
     def _run_real(self) -> BatchStats:
-        # Refresh lazy AVANT tout appel (non bloquant si échec)
+        from gateway_llm.installer import ensure_ollama_daemon
+        if load_local_mode() != LocalMode.CLOUD_ONLY:
+            ensure_ollama_daemon()
+
         self._maybe_refresh_benchmarks()
 
+        benchmarks = self._benchmarks or self._build_default_benchmarks()
+        local_mode = load_local_mode()
+        log.info("Mode d'exécution : %s", local_mode.value)
+
+        to_install = self._apply_local_mode(benchmarks, local_mode)
+        if to_install:
+            from gateway_llm.installer import Installer
+
+            Installer(interactive=False, assume_yes=True).ensure_models(to_install)
+
         providers = self._build_providers()
+
+        # Cloud-only : on retire ollama des providers de génération
+        if local_mode == LocalMode.CLOUD_ONLY:
+            providers = {k: v for k, v in providers.items() if k != "ollama"}
+            log.info("Providers cloud-only : %s", list(providers.keys()))
+
         if not providers:
-            raise RuntimeError("Aucun provider disponible (secrets ?)")
+            raise RuntimeError(
+                "Aucun provider disponible. Vérifiez vos secrets ou votre mode."
+            )
 
         budget = (
-            BudgetTracker(max_eur=self._max_cost_eur) if self._max_cost_eur is not None else None
+            BudgetTracker(max_eur=self._max_cost_eur)
+            if self._max_cost_eur is not None
+            else None
         )
         router = Router(
             config=self._cfg,
@@ -299,7 +408,7 @@ class BatchRunner:
             guardrail=self._guardrail,
             quota=QuotaManager(),
             policy=self._policy,
-            benchmarks=self._benchmarks,
+            benchmarks=benchmarks,
             hardware=self._hardware,
             budget=budget,
         )
@@ -310,6 +419,9 @@ class BatchRunner:
         start = time.monotonic()
 
         for task in self._iter_tasks():
+            if self._cancel_event is not None and self._cancel_event.is_set():
+                log.info("Annulation demandée, arrêt du batch")
+                break
             stats.total += 1
             task_id = task.get("id")
             if not task_id:
@@ -328,8 +440,7 @@ class BatchRunner:
             if domain is None:
                 if classifier is not None:
                     classification = classifier.classify(
-                        text,
-                        task.get("description", ""),
+                        text, task.get("description", "")
                     )
                     domain = classification.domain
                     stats.classified += 1
@@ -349,15 +460,16 @@ class BatchRunner:
 
             # 2) Raccourci human_review
             if classification is not None and classification.status.startswith("blocked"):
-                record = {
-                    "id": task_id,
-                    "domain": domain,
-                    "sensitivity": sensitivity,
-                    "status": "human_review",
-                    "reason": f"blocked by classifier: {classification.status}",
-                    "classification": _serialize_classification(classification),
-                }
-                checkpoint.append(record)
+                checkpoint.append(
+                    {
+                        "id": task_id,
+                        "domain": domain,
+                        "sensitivity": sensitivity,
+                        "status": "human_review",
+                        "reason": f"blocked by classifier: {classification.status}",
+                        "classification": _serialize_classification(classification),
+                    }
+                )
                 stats.processed += 1
                 stats.human_review += 1
                 stats.per_domain[domain] = stats.per_domain.get(domain, 0) + 1
@@ -365,15 +477,16 @@ class BatchRunner:
                 continue
 
             if classification is not None and classification.human_priority >= 9:
-                record = {
-                    "id": task_id,
-                    "domain": domain,
-                    "sensitivity": sensitivity,
-                    "status": "human_review",
-                    "reason": f"priorité critique ({classification.human_priority})",
-                    "classification": _serialize_classification(classification),
-                }
-                checkpoint.append(record)
+                checkpoint.append(
+                    {
+                        "id": task_id,
+                        "domain": domain,
+                        "sensitivity": sensitivity,
+                        "status": "human_review",
+                        "reason": f"priorité critique ({classification.human_priority})",
+                        "classification": _serialize_classification(classification),
+                    }
+                )
                 stats.processed += 1
                 stats.human_review += 1
                 stats.per_domain[domain] = stats.per_domain.get(domain, 0) + 1
@@ -384,13 +497,8 @@ class BatchRunner:
                 )
                 continue
 
-            # 3) Préparation éventuelle de l'image
-            log.info(
-                "[%s] route domain=%s sensitivity=%s",
-                task_id,
-                domain,
-                sensitivity,
-            )
+            # 3) Préparation image
+            log.info("[%s] route domain=%s sensitivity=%s", task_id, domain, sensitivity)
             image_b64: str | None = None
             image_ref = task.get("image_path") or task.get("image_b64")
             if image_ref:
@@ -401,19 +509,16 @@ class BatchRunner:
                     if img_path.exists():
                         image_b64 = base64.b64encode(img_path.read_bytes()).decode("ascii")
                     else:
-                        log.warning(
-                            "[%s] image_path introuvable: %s",
-                            task_id,
-                            image_ref,
-                        )
+                        log.warning("[%s] image_path introuvable: %s", task_id, image_ref)
 
-            # 4) Routage (router.route doit accepter image_b64)
+            # 4) Routage
             result = router.route(
                 task_text=text,
                 domain=domain,
                 sensitivity=sensitivity,
                 prompt=task.get("prompt"),
                 image_b64=image_b64,
+                ensure_markdown=self._ensure_markdown,
             )
 
             if result.success:

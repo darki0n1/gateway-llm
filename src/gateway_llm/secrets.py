@@ -48,47 +48,91 @@ class PowerShellVaultBackend(SecretBackend):
 
     def __init__(self) -> None:
         self._cache: dict[str, str | None] = {}
-        ps_exe = shutil.which("pwsh") or shutil.which("powershell")
-        if not ps_exe:
-            raise RuntimeError("PowerShell introuvable")
-        self._ps_exe = ps_exe
+        self._error: str | None = None
+        # On collecte les candidats dans l'ordre de préférence.
+        # powershell.exe (PS5.1) est souvent celui qui a le module
+        # quand pwsh (PS7 Store) ne l'a pas.
+        self._candidates: list[str] = [
+            p
+            for p in (shutil.which("powershell"), shutil.which("pwsh"))
+            if p is not None
+        ]
+        self._ps_exe: str | None = None
 
-    def is_available(self) -> bool:
+    def _probe(self, exe: str) -> bool:
+        """Teste si cet exécutable peut charger SecretManagement."""
         try:
             r = subprocess.run(
                 [
-                    self._ps_exe,
+                    exe,
                     "-NoProfile",
                     "-NonInteractive",
                     "-Command",
-                    "Import-Module Microsoft.PowerShell.SecretManagement; "
-                    "Get-SecretVault | Select-Object -First 1 | ConvertTo-Json",
+                    "Import-Module Microsoft.PowerShell.SecretManagement "
+                    "-ErrorAction Stop; "
+                    "Get-Command Get-Secret -ErrorAction Stop | Out-Null",
                 ],
                 capture_output=True,
                 text=True,
                 timeout=10,
             )
-            return r.returncode == 0 and r.stdout.strip() not in ("", "null")
-        except Exception:
+        except (OSError, subprocess.TimeoutExpired):
             return False
+        return r.returncode == 0
+
+    def _resolve_exe(self) -> str | None:
+        """Retourne le premier exécutable qui charge le module, sinon None."""
+        if self._ps_exe is not None:
+            return self._ps_exe
+        for exe in self._candidates:
+            if self._probe(exe):
+                self._ps_exe = exe
+                return exe
+        # Aucun candidat n'a le module : on garde le premier pour les logs
+        if self._candidates:
+            self._ps_exe = self._candidates[0]
+            self._error = (
+                "Aucun PowerShell ne charge SecretManagement. "
+                "Installez le module :\n"
+                "  Install-Module Microsoft.PowerShell.SecretManagement "
+                "-Scope CurrentUser\n"
+                "  Install-Module Microsoft.PowerShell.SecretStore "
+                "-Scope CurrentUser"
+            )
+        else:
+            self._error = "PowerShell (pwsh/powershell) introuvable dans le PATH"
+        return None
+
+    def is_available(self) -> bool:
+        # _resolve_exe a déjà validé le module via _probe.
+        return self._resolve_exe() is not None
 
     def get(self, key: str) -> str | None:
         if key in self._cache:
             return self._cache[key]
+        exe = self._resolve_exe()
+        if exe is None:
+            self._cache[key] = None
+            return None
         safe = key.replace("'", "''")
         cmd = (
-            "Import-Module Microsoft.PowerShell.SecretManagement; "
+            "Import-Module Microsoft.PowerShell.SecretManagement "
+            "-ErrorAction SilentlyContinue; "
             f"Get-Secret -Name '{safe}' -AsPlainText -ErrorAction Stop"
         )
         try:
             r = subprocess.run(
-                [self._ps_exe, "-NoProfile", "-NonInteractive", "-Command", cmd],
+                [exe, "-NoProfile", "-NonInteractive", "-Command", cmd],
                 capture_output=True,
                 text=True,
                 timeout=15,
             )
             if r.returncode != 0:
-                log.warning("Vault '%s' introuvable : %s", key, (r.stderr or "").strip()[:120])
+                log.warning(
+                    "Vault '%s' introuvable : %s",
+                    key,
+                    (r.stderr or "").strip()[:120],
+                )
                 self._cache[key] = None
                 return None
             value = r.stdout.strip().replace("\r", "").replace("\n", "")
@@ -100,15 +144,18 @@ class PowerShellVaultBackend(SecretBackend):
             return None
 
     def set(self, key: str, value: str) -> bool:
+        exe = self._resolve_exe()
+        if exe is None:
+            return False
         safe_k = key.replace("'", "''")
         safe_v = value.replace("'", "''")
         cmd = (
-            "Import-Module Microsoft.PowerShell.SecretManagement; "
+            "Import-Module Microsoft.PowerShell.SecretManagement -ErrorAction Stop; "
             f"Set-Secret -Name '{safe_k}' -Secret '{safe_v}'"
         )
         try:
             r = subprocess.run(
-                [self._ps_exe, "-NoProfile", "-NonInteractive", "-Command", cmd],
+                [exe, "-NoProfile", "-NonInteractive", "-Command", cmd],
                 capture_output=True,
                 text=True,
                 timeout=15,
@@ -116,7 +163,6 @@ class PowerShellVaultBackend(SecretBackend):
             return r.returncode == 0
         except Exception:
             return False
-
 
 # ─── HashiCorp Vault ──────────────────────────────────────────
 class HashiCorpVaultBackend(SecretBackend):

@@ -1,6 +1,8 @@
 # SPDX-FileCopyrightText: 2026 Amandine Dennieau
 # SPDX-License-Identifier: Apache-2.0
 
+"""Tests du TaskClassifier (cascade regex → embeddings → LLM)."""
+
 import json
 
 import pytest
@@ -13,9 +15,7 @@ from .helpers import FakeProvider, make_response
 
 
 class FakeSemanticRouter(SemanticRouter):
-    """Routeur sémantique factice pour les tests.
-    On lui passe le résultat qu'il doit renvoyer (ou None).
-    """
+    """Routeur sémantique factice : renvoie toujours le même résultat."""
 
     def __init__(self, result: SemanticResult | None = None) -> None:
         self._result = result
@@ -24,71 +24,130 @@ class FakeSemanticRouter(SemanticRouter):
         return self._result
 
 
-# ─── Mode Cascade (Semantic + LLM) ──────────────────────────────
-def test_semantic_router_wins_over_llm():
-    """Si le routeur sémantique trouve un domaine, le LLM n'est pas appelé."""
+# ─── Cascade : embeddings haute confiance ───────────────────────
+def test_embedding_high_confidence_returns_directly():
+    """Score ≥ 0.82 → embedding accepté sans appel LLM."""
     semantic = FakeSemanticRouter(SemanticResult(domain="code_debug", score=0.9))
-    provider = FakeProvider("fake", [])  # Aucun outcome prévu -> planterait si appelé
+    provider = FakeProvider("fake", [])  # Aucun outcome → planterait si appelé
 
     c = TaskClassifier(provider=provider, semantic_router=semantic)
     r = c.classify("Corriger cette fonction Python", "")
 
     assert r.domain == "code_debug"
-    assert "sémantique" in r.reason
+    assert r.decision_layer == "embedding"
+    assert r.confidence == 0.9
     assert provider.call_count == 0
 
 
-def test_fallback_to_llm_if_semantic_fails():
-    """Si le sémantique échoue (None), on passe au LLM."""
-    semantic = FakeSemanticRouter(None)
+# ─── Zone grise (0.60 ≤ score < 0.82) ─────────────────────────
+def test_zone_grise_no_provider_returns_embedding_with_priority():
+    """Zone grise sans LLM → retour embedding avec priorité ≥ 4 (review)."""
+    semantic = FakeSemanticRouter(SemanticResult(domain="thinking", score=0.75))
+    c = TaskClassifier(provider=None, semantic_router=semantic)
+
+    r = c.classify("Analyse ce problème", "")
+    assert r.domain == "thinking"
+    assert r.decision_layer == "embedding"
+    assert r.confidence == 0.75
+    assert r.human_priority >= 4
+
+
+def test_zone_grise_with_provider_uses_llm_tiebreaker():
+    """Zone grise avec LLM dispo → LLM confirme, decision_layer='llm'."""
+    semantic = FakeSemanticRouter(SemanticResult(domain="thinking", score=0.75))
     provider = FakeProvider(
         "fake",
         [
             make_response(
                 json.dumps(
-                    {"domain": "thinking", "status": "pending", "human_priority": 2, "flags": []}
+                    {
+                        "domain": "thinking",
+                        "status": "pending",
+                        "human_priority": 2,
+                        "flags": [],
+                    }
                 )
             )
         ],
     )
-
     c = TaskClassifier(provider=provider, semantic_router=semantic)
-    r = c.classify("Analyse ce problème", "")
 
+    r = c.classify("Analyse ce problème", "")
     assert r.domain == "thinking"
+    assert r.decision_layer == "llm"
+    assert r.confidence == 0.75
     assert provider.call_count == 1
 
 
-def test_fallback_to_regex_if_semantic_and_llm_fail():
-    """Si pas de LLM et pas de sémantique, on utilise la regex finale."""
-    semantic = FakeSemanticRouter(None)
+def test_zone_grise_llm_fails_falls_back_to_embedding():
+    """Zone grise + LLM échoue → retour embedding avec priorité ≥ 4."""
+    semantic = FakeSemanticRouter(SemanticResult(domain="thinking", score=0.70))
+    provider = FakeProvider("fake", [ProviderUnavailableError("500")])
+    c = TaskClassifier(provider=provider, semantic_router=semantic)
+
+    r = c.classify("Analyse ce problème", "")
+    assert r.domain == "thinking"
+    assert r.decision_layer == "embedding"
+    assert r.human_priority >= 4
+
+
+# ─── Bas score (< 0.60) : LLM direct ou fallback ──────────────
+def test_low_score_with_provider_uses_llm():
+    """Score < 0.60 → LLM direct (pas de confiance dans l'embedding)."""
+    semantic = FakeSemanticRouter(SemanticResult(domain="thinking", score=0.40))
+    provider = FakeProvider(
+        "fake",
+        [
+            make_response(
+                json.dumps(
+                    {
+                        "domain": "code_debug",
+                        "status": "pending",
+                        "human_priority": 0,
+                        "flags": [],
+                    }
+                )
+            )
+        ],
+    )
+    c = TaskClassifier(provider=provider, semantic_router=semantic)
+
+    r = c.classify("Corriger cette fonction Python", "")
+    assert r.domain == "code_debug"  # vient du LLM, pas du sémantique
+    assert r.decision_layer == "llm"
+    assert provider.call_count == 1
+
+
+def test_low_score_no_provider_uses_fallback():
+    """Score < 0.60 sans provider → fallback regex."""
+    semantic = FakeSemanticRouter(SemanticResult(domain="thinking", score=0.40))
     c = TaskClassifier(provider=None, semantic_router=semantic)
+
     r = c.classify("Corriger ce code Python", "")
-    assert r.domain == "code_debug"
+    assert r.domain == "code_debug"  # regex
+    assert r.decision_layer == "fallback"
     assert r.reason == "Fallback regex"
 
 
+# ─── Étage 1 : regex prime sur le sémantique ──────────────────
 def test_regex_block_wins_over_semantic():
-    """Si la regex détecte un bloquage critique, on s'arrête là,
-    même si le sémantique aurait pu trouver un domaine."""
+    """Si la regex détecte un blocage, on s'arrête, même avec un score sémantique élevé."""
     semantic = FakeSemanticRouter(SemanticResult(domain="translation", score=0.99))
     c = TaskClassifier(provider=None, semantic_router=semantic)
 
-    # Mot-clé "sécurité" déclenche un HIGH_RISK en regex
     r = c.classify("Audit de sécurité", "")
-
     assert r.status == "blocked_subjective"
     assert "HIGH_RISK" in r.flags
-    # Le domaine n'a pas été changé par le sémantique
-    assert "sémantique" not in r.reason
+    assert r.decision_layer == "regex"
 
 
-# ─── Mode LLM Direct ───────────────────────────────────────────
+# ─── LLM direct (sémantique = None) ────────────────────────────
 def _mock_llm(payload: dict) -> FakeProvider:
     return FakeProvider("fake", [make_response(json.dumps(payload))])
 
 
-def test_llm_success():
+def test_llm_success_when_semantic_returns_none():
+    semantic = FakeSemanticRouter(None)
     provider = _mock_llm(
         {
             "domain": "code_debug",
@@ -99,11 +158,12 @@ def test_llm_success():
             "reason": "code python",
         }
     )
-    c = TaskClassifier(provider=provider, semantic_router=FakeSemanticRouter(None))
+    c = TaskClassifier(provider=provider, semantic_router=semantic)
     r = c.classify("Corriger ce code", "Python")
     assert r.domain == "code_debug"
     assert r.status == "pending"
     assert r.human_priority == 3
+    assert r.decision_layer == "llm"
 
 
 def test_llm_unknown_domain_falls_back_to_prompt_creation():
@@ -125,6 +185,7 @@ def test_llm_bad_json_uses_fallback():
     c = TaskClassifier(provider=provider, semantic_router=FakeSemanticRouter(None))
     r = c.classify("Corriger ce code Python", "")
     assert r.domain == "code_debug"  # fallback regex
+    assert r.decision_layer == "fallback"
 
 
 def test_llm_http_error_uses_fallback():
@@ -133,6 +194,7 @@ def test_llm_http_error_uses_fallback():
     r = c.classify("Corriger ce code Python", "")
     assert r.domain == "code_debug"
     assert r.reason == "Fallback regex"
+    assert r.decision_layer == "fallback"
 
 
 def test_priority_clamped():
@@ -175,7 +237,7 @@ def test_think_tags_stripped():
     assert r.domain == "thinking"
 
 
-# ─── Mode Fallback Regex (sans provider, sans sémantique) ───────
+# ─── Fallback regex pur (pas de provider, pas de sémantique) ───
 def test_no_provider_uses_fallback():
     c = TaskClassifier(provider=None, semantic_router=FakeSemanticRouter(None))
     r = c.classify("Corriger ce code Python", "")
@@ -239,7 +301,6 @@ def test_fallback_edge_empty():
 
 
 def test_all_domains_valid():
-    """Tous les domaines produits doivent être dans la liste DOMAINS."""
     c = TaskClassifier(provider=None, semantic_router=FakeSemanticRouter(None))
     for text in [
         "code",

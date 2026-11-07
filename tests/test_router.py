@@ -286,3 +286,19 @@ def test_benchmarks_reorder_chain(tmp_path):
     assert p2.call_count == 1
     assert p1.call_count == 0
     assert p3.call_count == 0
+
+# ─── Markdown (ensure_markdown) ────────────────────────────────
+def test_markdown_prepended_by_default(minimal_config):
+    """Par défaut, l'instruction Markdown est prependée au prompt."""
+    provider = FakeProvider("fake", [make_response("hello")])
+    router = _make_router(minimal_config, {"fake": provider})
+    router.route("task", "generation")
+    assert "Markdown" in (provider.last_prompt or "")
+
+
+def test_markdown_disabled(minimal_config):
+    """ensure_markdown=False → pas d'instruction markdown."""
+    provider = FakeProvider("fake", [make_response("hello")])
+    router = _make_router(minimal_config, {"fake": provider})
+    router.route("task", "generation", ensure_markdown=False)
+    assert "Markdown" not in (provider.last_prompt or "")

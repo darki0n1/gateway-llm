@@ -81,6 +81,7 @@ class Router:
         prompt: str | None = None,
         temperature: float = 0.3,
         image_b64: str | None = None,
+        ensure_markdown: bool = True,
     ) -> RoutingResult:
         if domain not in self._config.domains:
             return RoutingResult(
@@ -89,7 +90,6 @@ class Router:
                 errors=[f"domaine inconnu : {domain}"],
             )
 
-        # Budget global déjà dépassé : on n'essaie même pas
         if self._budget is not None and self._budget.exceeded():
             return RoutingResult(
                 success=False,
@@ -100,6 +100,17 @@ class Router:
 
         dom_cfg = self._config.domains[domain]
         prompt = prompt or task_text
+
+        # Instruction Markdown (prepending plus fiable que appending pour
+        # l'instruction-following). Optionnelle : désactivable via
+        # BatchRunner(ensure_markdown=False) ou CLI --no-markdown.
+        if ensure_markdown:
+            md_prefix = (
+                "[Format de sortie : Markdown structuré "
+                "(titres ##, listes -, gras **, code ```langage).]\n\n"
+            )
+            prompt = md_prefix + prompt
+
         errors: list[str] = []
         escalations = 0
         chain = list(dom_cfg.chain)

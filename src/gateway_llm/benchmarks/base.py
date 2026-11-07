@@ -11,8 +11,6 @@ from enum import StrEnum
 
 
 class TaskCategory(StrEnum):
-    """Catégories de tâches que le routeur sait gérer."""
-
     CODE_DEBUG = "code_debug"
     THINKING = "thinking"
     PROBLEM_SOLVING = "problem_solving"
@@ -26,26 +24,23 @@ class TaskCategory(StrEnum):
 
 @dataclass
 class BenchmarkResult:
-    """Score d'un modèle dans une catégorie donnée."""
-
-    model_key: str  # nom normalisé
+    model_key: str
     category: TaskCategory
-    score: float  # 0-100 (ou 0-5 pour RWS, normalisé)
-    source: str  # "benchlm", "rankllms", "f5", "rws"
-    raw_name: str = ""  # nom original dans la source
+    score: float
+    source: str
+    raw_name: str = ""
+    # ── Champs enrichis pour la sélection locale ──
+    size_gb: float | None = None
+    runtime_memory_gb: float | None = None
+    quantization: str | None = None
+    param_count_b: float | None = None
 
 
 class BenchmarkSource(ABC):
-    """Une source de benchmarks interrogeable."""
-
     name: str
 
     @abstractmethod
-    def fetch(self, category: TaskCategory) -> list[BenchmarkResult]:
-        """Retourne les scores pour une catégorie donnée."""
-        ...
+    def fetch(self, category: TaskCategory) -> list[BenchmarkResult]: ...
 
     @abstractmethod
-    def supports(self, category: TaskCategory) -> bool:
-        """Indique si cette source couvre la catégorie."""
-        ...
+    def supports(self, category: TaskCategory) -> bool: ...
