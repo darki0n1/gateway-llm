@@ -5,9 +5,11 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import pathlib
+import queue
 import subprocess
 import sys
 import threading
@@ -27,7 +29,6 @@ from gateway_llm.intake import (
 log = logging.getLogger(__name__)
 
 # ─── Drag & Drop (optionnel) ──────────────────────────────────
-
 try:
     from tkinterdnd2 import DND_FILES, TkinterDnD  # type: ignore[import-not-found]
 
@@ -42,7 +43,7 @@ except ImportError:
 # ─── Playwright Chromium : check + installation auto ──────────
 def _playwright_chromium_ok() -> bool:
     try:
-        from playwright.sync_api import sync_playwright
+        from playwright.sync_api import sync_playwright  # type: ignore[import-not-found]
     except ImportError:
         return False
     try:
@@ -76,28 +77,40 @@ def _install_playwright_chromium(timeout: int = 600) -> bool:
     return True
 
 
-# ─── Handler de logs vers widget Text ─────────────────────────
+# ─── Handler de logs vers widget Text (batché) ────────────────
 class _TextHandler(logging.Handler):
     def __init__(self, text_widget: tk.Text) -> None:
         super().__init__()
         self._widget = text_widget
         self.setFormatter(logging.Formatter("[%(levelname)s] %(message)s"))
+        self._queue: queue.Queue[str] = queue.Queue()
+        self._widget.after(150, self._drain)
 
     def emit(self, record: logging.LogRecord) -> None:
+        with contextlib.suppress(Exception):
+            self._queue.put_nowait(self.format(record))
+
+    def _drain(self) -> None:
+        lines: list[str] = []
         try:
-            msg = self.format(record)
-            self._widget.after(0, self._append, msg)
-        except Exception:
+            for _ in range(200):
+                lines.append(self._queue.get_nowait())
+        except queue.Empty:
             pass
 
-    def _append(self, msg: str) -> None:
-        try:
-            self._widget.config(state="normal")
-            self._widget.insert("end", msg + "\n")
-            self._widget.see("end")
-            self._widget.config(state="disabled")
-        except tk.TclError:
-            pass
+        if lines:
+            try:
+                self._widget.config(state="normal")
+                self._widget.insert("end", "\n".join(lines) + "\n")
+                total = int(self._widget.index("end-1c").split(".")[0])
+                if total > 1000:
+                    self._widget.delete("1.0", f"{total - 1000}.0")
+                self._widget.see("end")
+                self._widget.config(state="disabled")
+            except tk.TclError:
+                pass
+
+        self._widget.after(150, self._drain)
 
 
 # ─── Dialogue de premier lancement : mode d'exécution ─────────
@@ -129,14 +142,14 @@ class ModeDialog(tk.Toplevel):
             (
                 LocalMode.CLOUD_ONLY,
                 "100% cloud",
-                "Utilise uniquement les API cloud (Groq, Mistral, OpenRouter,\n"
-                "Google…). Clés API requises. Aucun modèle local téléchargé.",
+                "Utilise uniquement les API cloud. Clés API requises.\n"
+                "Aucun modèle local téléchargé.",
             ),
             (
                 LocalMode.LOCAL_ONLY,
                 "100% local",
-                "Télécharge les meilleurs modèles Ollama pour votre machine\n"
-                "(VRAM + RAM + disque détectés). Aucune donnée ne sort.",
+                "Télécharge les meilleurs modèles Ollama pour votre machine.\n"
+                "Aucune donnée ne sort.",
             ),
             (
                 LocalMode.HYBRID,
@@ -147,8 +160,7 @@ class ModeDialog(tk.Toplevel):
             (
                 LocalMode.DEFAULT,
                 "Défaut (recommandé)",
-                "Télécharge uniquement les modèles bootstrap (qwen légers)\n"
-                "pour le routage, les embeddings et la classification.",
+                "Télécharge uniquement les modèles bootstrap (qwen légers).",
             ),
         ]
         for mode, title, desc in options:
@@ -178,8 +190,12 @@ class PrepareTab(ttk.Frame):
         self._build()
 
     def _build(self) -> None:
+        self.columnconfigure(0, weight=1)
+        self.columnconfigure(1, weight=3)
+        self.columnconfigure(2, weight=1)
+
         ttk.Label(self, text="Type de source :").grid(
-            row=0, column=0, sticky="w", pady=(0, 4)
+            row=0, column=0, sticky="w", padx=(40, 0), pady=(20, 4)
         )
         self.source_type = tk.StringVar(value="Dossier d'images")
         ttk.Combobox(
@@ -193,21 +209,35 @@ class PrepareTab(ttk.Frame):
                 "Liste d'URLs (.txt)",
                 "Mixte (images + textes + CSV)",
             ],
-        ).grid(row=1, column=0, columnspan=3, sticky="ew", pady=(0, 12))
+        ).grid(row=1, column=0, columnspan=3, sticky="ew", padx=(40, 40), pady=(0, 12))
 
         hint = (
             "Emplacement(s) — glisser-déposer accepté :"
             if _DND_AVAILABLE
             else "Emplacement(s) :"
         )
+        ttk.Label(self, text=hint).grid(
+            row=2, column=0, sticky="w", padx=(40, 0), pady=(0, 4)
+        )
+        
+        list_frame = ttk.Frame(self)
+        list_frame.grid(row=3, column=0, columnspan=2, sticky="nsew", padx=(40, 0))
+        list_frame.rowconfigure(0, weight=1)
+        list_frame.columnconfigure(0, weight=1)
 
-        ttk.Label(self, text=hint).grid(row=2, column=0, sticky="w", pady=(0, 4))
+        self.paths_listbox = tk.Listbox(
+            list_frame, height=5, selectmode="extended"
+        )
+        self.paths_listbox.grid(row=0, column=0, sticky="nsew")
 
-        self.paths_listbox = tk.Listbox(self, height=5, selectmode="extended")
-        self.paths_listbox.grid(row=3, column=0, columnspan=2, sticky="ew")
+        scroll = ttk.Scrollbar(
+            list_frame, orient="vertical", command=self.paths_listbox.yview
+        )
+        scroll.grid(row=0, column=1, sticky="ns")
+        self.paths_listbox.config(yscrollcommand=scroll.set)
 
         btn_frame = ttk.Frame(self)
-        btn_frame.grid(row=3, column=2, padx=(6, 0), sticky="n")
+        btn_frame.grid(row=3, column=2, padx=(6, 40), sticky="n")
         ttk.Button(btn_frame, text="Ajouter…", command=self._add_sources).pack(fill="x")
         ttk.Button(
             btn_frame, text="Retirer", command=self._remove_selected
@@ -218,43 +248,34 @@ class PrepareTab(ttk.Frame):
             command=lambda: self.paths_listbox.delete(0, "end"),
         ).pack(fill="x", pady=(4, 0))
 
-        ttk.Label(self, text="Colonne CSV (si applicable) :").grid(
-            row=4, column=0, sticky="w", pady=(12, 4)
-        )
-        self.column_var = tk.StringVar()
-        self.column_combo = ttk.Combobox(
-            self, textvariable=self.column_var, state="readonly"
-        )
-        self.column_combo.grid(row=5, column=0, columnspan=3, sticky="ew")
-
         ttk.Label(self, text="Consigne envoyée au modèle :").grid(
-            row=6, column=0, sticky="w", pady=(12, 4)
+            row=4, column=0, sticky="w", padx=(40, 0), pady=(12, 4)
         )
-        self.prompt_var = tk.StringVar(
-            value="Analyse cette image et décris ce que tu vois."
-        )
-        ttk.Entry(self, textvariable=self.prompt_var).grid(
-            row=7, column=0, columnspan=3, sticky="ew"
+        self.prompt_text = tk.Text(self, height=3, wrap="word")
+        self.prompt_text.grid(row=5, column=0, columnspan=3, sticky="ew", padx=(40, 40))
+        self.prompt_text.insert(
+            "1.0",
+            "Analyse cette image et décris ce que tu vois.",
         )
 
         ttk.Label(self, text="Fichier de sortie (.jsonl) :").grid(
-            row=8, column=0, sticky="w", pady=(12, 4)
+            row=6, column=0, sticky="w", padx=(40, 0), pady=(12, 4)
         )
         self.out_var = tk.StringVar(
             value=str(pathlib.Path.cwd() / "tasks.jsonl")
         )
         ttk.Entry(self, textvariable=self.out_var).grid(
-            row=9, column=0, columnspan=2, sticky="ew"
+            row=7, column=0, columnspan=2, sticky="ew", padx=(40, 0)
         )
         ttk.Button(
             self, text="Enregistrer sous…", command=self._pick_output
-        ).grid(row=9, column=2, padx=(6, 0))
+        ).grid(row=7, column=2, padx=(6, 40))
 
         ttk.Button(
             self,
             text="Générer le fichier de tâches",
             command=self._generate,
-        ).grid(row=10, column=0, columnspan=3, pady=20)
+        ).grid(row=8, column=0, columnspan=3, pady=20)
 
     # ─── Drag & Drop ──────────────────────────────────────────
     def _on_drop(self, event) -> None:
@@ -271,10 +292,8 @@ class PrepareTab(ttk.Frame):
     def _add_sources(self) -> None:
         stype = self.source_type.get()
         if stype == "Fichier(s) CSV":
-            self.prompt_var.set(
-                "Voici un tableau :\n\n{table}\n\n"
-                "Réponds à la demande suivante en te basant sur les colonnes pertinentes :"
-            )
+            self.prompt_text.delete("1.0", "end")
+            self.prompt_text.insert("1.0", "Calcule le total de la recette.")
             paths = filedialog.askopenfilenames(
                 filetypes=[("CSV", "*.csv"), ("Tous", "*.*")]
             )
@@ -314,10 +333,11 @@ class PrepareTab(ttk.Frame):
 
             with csv_path.open("r", encoding="utf-8", newline="") as f:
                 reader = csv_mod.reader(f)
-                headers = next(reader, [])
-            self.column_combo["values"] = headers
+                next(reader, [])
+            # On garde la colonne pour information, mais intake_from_csv_multi
+            # lit de toute façon toutes les colonnes.
         except Exception:
-            self.column_combo["values"] = []
+            pass
 
     def _pick_output(self) -> None:
         p = filedialog.asksaveasfilename(
@@ -330,7 +350,7 @@ class PrepareTab(ttk.Frame):
     def _generate(self) -> None:
         try:
             out = pathlib.Path(self.out_var.get())
-            prompt = self.prompt_var.get()
+            prompt = self.prompt_text.get("1.0", "end-1c").strip()
             stype = self.source_type.get()
             sources = list(self.paths_listbox.get(0, "end"))
 
@@ -348,8 +368,14 @@ class PrepareTab(ttk.Frame):
                 )
             elif stype == "Fichier(s) CSV":
                 paths = [pathlib.Path(p) for p in sources]
+                safe_prompt = prompt.replace("{", "{{").replace("}", "}}")
+                final_template = (
+                    f"Voici un tableau :\n\n{{table}}\n\nQuestion : {safe_prompt}"
+                    if safe_prompt
+                    else "Voici un tableau :\n\n{table}"
+                )
                 n = intake_from_csv_multi(
-                    paths, out, prompt_template=prompt or "{table}"
+                    paths, out, prompt_template=final_template
                 )
             elif stype == "Mixte (images + textes + CSV)":
                 n = intake_mixed(
@@ -439,7 +465,6 @@ class RunTab(ttk.Frame):
         )
         self._advanced_btn.grid(row=5, column=0, columnspan=3, pady=(8, 0))
 
-        # Boutons Lancer + Annuler côte à côte
         action_frame = ttk.Frame(self)
         action_frame.grid(row=6, column=0, columnspan=3, sticky="ew", pady=20)
         action_frame.columnconfigure(0, weight=1)
@@ -458,12 +483,19 @@ class RunTab(ttk.Frame):
         )
         self.cancel_btn.grid(row=0, column=1, sticky="ew", padx=(4, 0))
 
-        self.progress = ttk.Progressbar(self, mode="indeterminate")
+        self.progress = ttk.Progressbar(
+            self, mode="determinate", maximum=100
+        )
         self.progress.grid(row=7, column=0, columnspan=3, sticky="ew")
 
+        self.eta_var = tk.StringVar(value="")
+        ttk.Label(
+            self, textvariable=self.eta_var, foreground="gray"
+        ).grid(row=8, column=0, columnspan=3, sticky="w", pady=(4, 0))
+
         log_frame = ttk.Frame(self)
-        log_frame.grid(row=8, column=0, columnspan=3, sticky="nsew", pady=(10, 0))
-        self.rowconfigure(8, weight=1)
+        log_frame.grid(row=9, column=0, columnspan=3, sticky="nsew", pady=(10, 0))
+        self.rowconfigure(9, weight=1)
         self.columnconfigure(0, weight=1)
         self.log_text = tk.Text(
             log_frame, height=10, wrap="word", state="disabled"
@@ -517,6 +549,27 @@ class RunTab(ttk.Frame):
             self._append_log(
                 "⚠ Annulation demandée, arrêt après la tâche en cours…"
             )
+
+    def _update_progress(self, current: int, total: int, speed: float) -> None:
+        if total <= 0:
+            return
+        pct = (current / total) * 100
+        self.progress["value"] = pct
+
+        if speed > 0:
+            remaining = (total - current) / speed
+            if remaining < 60:
+                eta = f"{int(remaining)}s"
+            elif remaining < 3600:
+                eta = f"{int(remaining // 60)}m {int(remaining % 60)}s"
+            else:
+                eta = f"{int(remaining // 3600)}h {int((remaining % 3600) // 60)}m"
+        else:
+            eta = "…"
+
+        self.eta_var.set(
+            f"Progression : {current}/{total} ({pct:.1f}%) — reste ~{eta}"
+        )
 
     def _launch(self) -> None:
         if self._thread and self._thread.is_alive():
@@ -576,7 +629,8 @@ class RunTab(ttk.Frame):
             return
 
         self._cancel_event = threading.Event()
-        self.progress.start(10)
+        self.progress["value"] = 0
+        self.eta_var.set("Démarrage…")
         self.run_btn.config(state="disabled")
         self.cancel_btn.config(state="normal")
         self._append_log(f"Lancement sur {inp.name} → {out.name}")
@@ -589,6 +643,9 @@ class RunTab(ttk.Frame):
         if self._log_handler is None:
             self._log_handler = _TextHandler(self.log_text)
             logging.getLogger("gateway_llm").addHandler(self._log_handler)
+
+        def _progress_cb(current: int, total: int, speed: float) -> None:
+            self.after(0, self._update_progress, current, total, speed)
 
         def worker() -> None:
             try:
@@ -615,6 +672,7 @@ class RunTab(ttk.Frame):
                     output_path=out,
                     hardware=hw,
                     max_cost_eur=max_cost,
+                    progress_callback=_progress_cb,
                 )
                 runner._cancel_event = self._cancel_event
                 runner.run()
@@ -626,7 +684,8 @@ class RunTab(ttk.Frame):
         self._thread.start()
 
     def _on_success(self, output: pathlib.Path) -> None:
-        self.progress.stop()
+        self.progress["value"] = 100
+        self.eta_var.set("Terminé")
         self.run_btn.config(state="normal")
         self.cancel_btn.config(state="disabled")
         self._append_log(f"✅ Terminé : {output}")
@@ -637,7 +696,7 @@ class RunTab(ttk.Frame):
         )
 
     def _on_error(self, exc: Exception) -> None:
-        self.progress.stop()
+        self.eta_var.set("Erreur")
         self.run_btn.config(state="normal")
         self.cancel_btn.config(state="disabled")
         self._append_log(f"❌ {exc}")
@@ -671,58 +730,68 @@ class ResultsTab(ttk.Frame):
         self.notebook = ttk.Notebook(self)
         self.notebook.pack(fill="both", expand=True)
 
-        # Résumé
+        # ─── Résumé ─────────────────────────────────────────────
         self.summary_frame = ttk.Frame(self.notebook, padding=10)
         self.notebook.add(self.summary_frame, text="Résumé")
-        self.summary_text = tk.Text(
-            self.summary_frame, wrap="word", height=20, state="disabled"
-        )
-        self.summary_text.pack(fill="both", expand=True)
 
-        # À revoir
+        sum_frame = ttk.Frame(self.summary_frame)
+        sum_frame.pack(fill="both", expand=True)
+        self.summary_text = tk.Text(sum_frame, wrap="word", state="disabled")
+        sum_scroll = ttk.Scrollbar(
+            sum_frame, orient="vertical", command=self.summary_text.yview
+        )
+        self.summary_text.pack(side="left", fill="both", expand=True)
+        sum_scroll.pack(side="right", fill="y")
+        self.summary_text.config(yscrollcommand=sum_scroll.set)
+
+        # ─── À revoir ───────────────────────────────────────────
         self.review_frame = ttk.Frame(self.notebook, padding=10)
         self.notebook.add(self.review_frame, text="À revoir")
-        self.review_list = tk.Listbox(self.review_frame)
+
+        rev_frame = ttk.Frame(self.review_frame)
+        rev_frame.pack(fill="both", expand=True)
+
+        self.review_list = tk.Listbox(rev_frame)
         self.review_list.pack(fill="both", expand=True, side="left")
-        scroll = ttk.Scrollbar(
-            self.review_frame,
-            orient="vertical",
-            command=self.review_list.yview,
+        list_scroll = ttk.Scrollbar(
+            rev_frame, orient="vertical", command=self.review_list.yview
         )
-        scroll.pack(side="right", fill="y")
-        self.review_list.config(yscrollcommand=scroll.set)
+        list_scroll.pack(side="right", fill="y")
+        self.review_list.config(yscrollcommand=list_scroll.set)
         self.review_list.bind("<<ListboxSelect>>", self._on_review_select)
 
         self.detail_frame = ttk.Frame(self.review_frame, padding=10)
         self.detail_frame.pack(fill="both", expand=True, padx=(10, 0))
-        self.detail_text = tk.Text(
-            self.detail_frame, wrap="word", height=12, state="disabled"
-        )
-        self.detail_text = tk.Text(
-            self.detail_frame, wrap="word", height=12, state="disabled"
-        )
-        self.detail_text.pack(fill="both", expand=True)
-        # Tags markdown (configurés une seule fois)
-        self.detail_text.tag_configure("h1", font=("TkDefaultFont", 14, "bold"))
-        self.detail_text.tag_configure("h2", font=("TkDefaultFont", 12, "bold"))
-        self.detail_text.tag_configure("h3", font=("TkDefaultFont", 10, "bold"))
-        self.detail_text.tag_configure("bold", font=("TkDefaultFont", 10, "bold"))
-        self.detail_text.tag_configure("italic", font=("TkDefaultFont", 10, "italic"))
-        self.detail_text.tag_configure(
-            "code", font=("Courier", 10), background="#f0f0f0"
-        )
-        self.detail_text.tag_configure(
-            "codeblock", font=("Courier", 10), background="#f4f4f4"
-        )
-        self.detail_text.tag_configure("quote", lmargin1=20, lmargin2=20, foreground="#666")
 
-        # Tout
+        det_frame = ttk.Frame(self.detail_frame)
+        det_frame.pack(fill="both", expand=True)
+        self.detail_text = tk.Text(det_frame, wrap="word", state="disabled")
+        det_scroll = ttk.Scrollbar(
+            det_frame, orient="vertical", command=self.detail_text.yview
+        )
+        self.detail_text.pack(side="left", fill="both", expand=True)
+        det_scroll.pack(side="right", fill="y")
+        self.detail_text.config(yscrollcommand=det_scroll.set)
+        self._configure_tags(self.detail_text)
+
+        btn_frame = ttk.Frame(self.detail_frame)
+        btn_frame.pack(fill="x", pady=(6, 0))
+        ttk.Button(btn_frame, text="Accepter", command=self._accept).pack(
+            side="left", padx=(0, 6)
+        )
+        ttk.Button(btn_frame, text="Rejeter", command=self._reject).pack(side="left")
+
+        # ─── Tout ───────────────────────────────────────────────
         self.all_frame = ttk.Frame(self.notebook, padding=10)
         self.notebook.add(self.all_frame, text="Tout")
+
+        all_tree_frame = ttk.Frame(self.all_frame)
+        all_tree_frame.pack(fill="both", expand=True)
         self.all_tree = ttk.Treeview(
-            self.all_frame,
+            all_tree_frame,
             columns=("id", "domain", "model", "status", "cost"),
             show="headings",
+            height=10,
         )
         for col, label in [
             ("id", "ID"),
@@ -733,11 +802,84 @@ class ResultsTab(ttk.Frame):
         ]:
             self.all_tree.heading(col, text=label)
             self.all_tree.column(col, width=120)
-        self.all_tree.pack(fill="both", expand=True)
+        self.all_tree.pack(fill="both", expand=True, side="left")
 
-    # ─── Auto-refresh ─────────────────────────────────────────
+        all_tree_scroll = ttk.Scrollbar(
+            all_tree_frame, orient="vertical", command=self.all_tree.yview
+        )
+        all_tree_scroll.pack(side="right", fill="y")
+        self.all_tree.config(yscrollcommand=all_tree_scroll.set)
+        self.all_tree.bind("<<TreeviewSelect>>", self._on_all_select)
+
+        self.all_detail_frame = ttk.Frame(self.all_frame, padding=10)
+        self.all_detail_frame.pack(fill="both", expand=True, pady=(10, 0))
+        self.all_detail_text = tk.Text(
+            self.all_detail_frame, wrap="word", state="disabled", height=8
+        )
+        all_det_scroll = ttk.Scrollbar(
+            self.all_detail_frame,
+            orient="vertical",
+            command=self.all_detail_text.yview,
+        )
+        self.all_detail_text.pack(side="left", fill="both", expand=True)
+        all_det_scroll.pack(side="right", fill="y")
+        self.all_detail_text.config(yscrollcommand=all_det_scroll.set)
+        self._configure_tags(self.all_detail_text)
+
+    def _configure_tags(self, widget: tk.Text) -> None:
+        widget.tag_configure("h1", font=("TkDefaultFont", 14, "bold"))
+        widget.tag_configure("h2", font=("TkDefaultFont", 12, "bold"))
+        widget.tag_configure("h3", font=("TkDefaultFont", 10, "bold"))
+        widget.tag_configure("bold", font=("TkDefaultFont", 10, "bold"))
+        widget.tag_configure("italic", font=("TkDefaultFont", 10, "italic"))
+        widget.tag_configure("code", font=("Courier", 10), background="#f0f0f0")
+        widget.tag_configure("codeblock", font=("Courier", 10), background="#f4f4f4")
+        widget.tag_configure("quote", lmargin1=20, lmargin2=20, foreground="#666")
+
+    def _render_markdown(self, widget: tk.Text, md_text: str) -> None:
+        widget.config(state="normal")
+        widget.delete("1.0", "end")
+
+        in_code = False
+        for line in md_text.split("\n"):
+            if line.strip().startswith("```"):
+                in_code = not in_code
+                continue
+            if in_code:
+                widget.insert("end", line + "\n", "codeblock")
+                continue
+            if line.startswith("### "):
+                widget.insert("end", line[4:] + "\n", "h3")
+            elif line.startswith("## "):
+                widget.insert("end", line[3:] + "\n", "h2")
+            elif line.startswith("# "):
+                widget.insert("end", line[2:] + "\n", "h1")
+            elif line.startswith("> "):
+                widget.insert("end", line[2:] + "\n", "quote")
+            elif line.lstrip().startswith(("- ", "* ")):
+                widget.insert("end", "  • " + line.lstrip()[2:] + "\n")
+            else:
+                self._insert_inline(widget, line + "\n")
+
+        widget.config(state="disabled")
+
+    def _insert_inline(self, widget: tk.Text, text: str) -> None:
+        import re
+
+        pattern = re.compile(r"(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`)")
+        for part in pattern.split(text):
+            if not part:
+                continue
+            if part.startswith("**") and part.endswith("**"):
+                widget.insert("end", part[2:-2], "bold")
+            elif part.startswith("*") and part.endswith("*"):
+                widget.insert("end", part[1:-1], "italic")
+            elif part.startswith("`") and part.endswith("`"):
+                widget.insert("end", part[1:-1], "code")
+            else:
+                widget.insert("end", part)
+
     def start_auto_refresh(self, path: pathlib.Path) -> None:
-        """Démarre le polling du fichier pour rafraîchir l'affichage."""
         self._auto_path = path
         self.file_var.set(str(path))
         self._last_mtime = 0.0
@@ -763,7 +905,7 @@ class ResultsTab(ttk.Frame):
         )
         if p:
             self.file_var.set(p)
-            self._auto_path = None  # désactive l'auto-refresh en mode manuel
+            self._auto_path = None
             self._load()
 
     def _load(self) -> None:
@@ -794,7 +936,6 @@ class ResultsTab(ttk.Frame):
         except OSError:
             return
 
-        # Dédoublonne par id (dernier record gagne)
         seen: dict[str, dict] = {}
         for r in self._results:
             rid = r.get("id")
@@ -877,53 +1018,28 @@ class ResultsTab(ttk.Frame):
             f"**Raison :** {target.get('guardrail_reason', '—')}\n\n"
             f"---\n\n"
         )
-        self._render_markdown(header + target.get("response", "_(pas de réponse)_"))
+        self._render_markdown(
+            self.detail_text, header + target.get("response", "_(pas de réponse)_")
+        )
 
-    def _render_markdown(self, md_text: str) -> None:
-        """Affiche du markdown dans le widget read-only avec tags."""
-
-        self.detail_text.config(state="normal")
-        self.detail_text.delete("1.0", "end")
-
-        in_code = False
-        for line in md_text.split("\n"):
-            if line.strip().startswith("```"):
-                in_code = not in_code
-                continue
-            if in_code:
-                self.detail_text.insert("end", line + "\n", "codeblock")
-                continue
-            if line.startswith("### "):
-                self.detail_text.insert("end", line[4:] + "\n", "h3")
-            elif line.startswith("## "):
-                self.detail_text.insert("end", line[3:] + "\n", "h2")
-            elif line.startswith("# "):
-                self.detail_text.insert("end", line[2:] + "\n", "h1")
-            elif line.startswith("> "):
-                self.detail_text.insert("end", line[2:] + "\n", "quote")
-            elif line.lstrip().startswith(("- ", "* ")):
-                self.detail_text.insert("end", "  • " + line.lstrip()[2:] + "\n")
-            else:
-                self._insert_inline(line + "\n")
-
-        self.detail_text.config(state="disabled")
-
-    def _insert_inline(self, text: str) -> None:
-        """Insère une ligne en gérant **gras**, *italique*, `code`."""
-        import re
-
-        pattern = re.compile(r"(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`)")
-        for part in pattern.split(text):
-            if not part:
-                continue
-            if part.startswith("**") and part.endswith("**"):
-                self.detail_text.insert("end", part[2:-2], "bold")
-            elif part.startswith("*") and part.endswith("*"):
-                self.detail_text.insert("end", part[1:-1], "italic")
-            elif part.startswith("`") and part.endswith("`"):
-                self.detail_text.insert("end", part[1:-1], "code")
-            else:
-                self.detail_text.insert("end", part)
+    def _on_all_select(self, _event) -> None:
+        sel = self.all_tree.selection()
+        if not sel:
+            return
+        item_id = sel[0]
+        idx = self.all_tree.index(item_id)
+        if 0 <= idx < len(self._results):
+            target = self._results[idx]
+            header = (
+                f"**ID :** `{target.get('id')}`\n"
+                f"**Modèle :** {target.get('model_used', '—')} | "
+                f"**Statut :** {target.get('status', '—')}\n\n"
+                f"---\n\n"
+            )
+            self._render_markdown(
+                self.all_detail_text,
+                header + target.get("response", "_(pas de réponse)_"),
+            )
 
     def _accept(self) -> None:
         self._decision("accepted")
@@ -1049,16 +1165,13 @@ class App(_TkBase):  # type: ignore[misc]
         )
         self.status_bar.pack(side="bottom", fill="x")
 
-        # 1) Mode d'exécution au premier lancement
         mode_file = pathlib.Path.home() / ".gateway-llm" / "config.yaml"
         if not mode_file.exists():
             dialog = ModeDialog(self)
             self.wait_window(dialog)
 
-        # 2) Chromium Playwright (async)
         self._ensure_playwright_async()
 
-        # 3) Notebook
         notebook = ttk.Notebook(self)
         notebook.pack(fill="both", expand=True, padx=10, pady=10)
 
@@ -1068,17 +1181,7 @@ class App(_TkBase):  # type: ignore[misc]
         self.prepare_tab = PrepareTab(notebook)
         notebook.add(self.prepare_tab, text="1. Préparer les données")
 
-        # Drag & drop si tkinterdnd2 présent
-        if _DND_AVAILABLE and DND_FILES is not None:
-            try:
-                lb: Any = self.prepare_tab.paths_listbox
-                lb.drop_target_register(DND_FILES)
-                lb.dnd_bind("<<Drop>>", self.prepare_tab._on_drop)
-            except Exception as e:
-                log.info("Activation drag & drop échouée : %s", e)
-
         self.results_tab = ResultsTab(notebook)
-        notebook.add(self.results_tab, text="3. Voir les résultats")
 
         def _on_batch_done(output: pathlib.Path) -> None:
             self.results_tab.start_auto_refresh(output)
@@ -1087,7 +1190,16 @@ class App(_TkBase):  # type: ignore[misc]
         self.run_tab = RunTab(notebook, on_success=_on_batch_done)
         notebook.add(self.run_tab, text="2. Lancer le traitement")
 
-        # 4) Secrets au premier lancement
+        notebook.add(self.results_tab, text="3. Voir les résultats")
+
+        if _DND_AVAILABLE and DND_FILES is not None:
+            try:
+                lb: Any = self.prepare_tab.paths_listbox
+                lb.drop_target_register(DND_FILES)
+                lb.dnd_bind("<<Drop>>", self.prepare_tab._on_drop)
+            except Exception as e:
+                log.info("Activation drag & drop échouée : %s", e)
+
         secrets_file = pathlib.Path.home() / ".gateway-llm" / "secrets.yaml"
         if not secrets_file.exists():
             notebook.select(self.secrets_tab)
@@ -1100,7 +1212,7 @@ class App(_TkBase):  # type: ignore[misc]
     def _ensure_playwright_async(self) -> None:
         def worker() -> None:
             try:
-                from playwright.sync_api import sync_playwright  # noqa: F401
+                from playwright.sync_api import sync_playwright  # noqa: F401, type: ignore[import-not-found]
             except ImportError:
                 log.info(
                     "Playwright non installé, scraping utilisera l'API de secours"

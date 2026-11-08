@@ -143,6 +143,7 @@ _DEFAULT_CONFIG: dict = {
             "type": "openai_compat",
             "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
             "secret_name": "GOOGLE_API_KEY",
+            "timeout": 30,
         },
         "ollama": {
             "type": "ollama",

@@ -12,6 +12,7 @@ import os
 import pathlib
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from gateway_llm.benchmarks.aggregator import BenchmarkAggregator
@@ -76,16 +77,16 @@ class BatchRunner:
         classifier: TaskClassifier | None = None,
         classifier_model: str = "qwen3:4b-instruct",
         disable_classifier: bool = False,
-        ensure_markdown: bool = True,
         max_cost_eur: float | None = None,
         resume: bool = False,
         dry_run: bool = False,
         sample_size: int = 20,
+        progress_callback: Callable[[int, int, float], None] | None = None,
+        ensure_markdown: bool = True,
     ) -> None:
         self._cfg = config
         self._in = input_path
         self._out = output_path
-        self._cancel_event: threading.Event | None = None
         self._policy = policy
         self._benchmarks = benchmarks
         self._hardware = hardware
@@ -106,11 +107,13 @@ class BatchRunner:
         self._classifier = classifier
         self._classifier_model = classifier_model
         self._disable_classifier = disable_classifier
-        self._ensure_markdown = ensure_markdown
         self._max_cost_eur = max_cost_eur
         self._resume = resume
         self._dry_run = dry_run
         self._sample_size = sample_size
+        self._progress_callback = progress_callback
+        self._ensure_markdown = ensure_markdown
+        self._cancel_event: threading.Event | None = None
 
     # ────────────────────────────────────────────────────────────
     # Sélection locale par benchmarks + hardware
@@ -369,10 +372,6 @@ class BatchRunner:
     # Run réel
     # ────────────────────────────────────────────────────────────
     def _run_real(self) -> BatchStats:
-        from gateway_llm.installer import ensure_ollama_daemon
-        if load_local_mode() != LocalMode.CLOUD_ONLY:
-            ensure_ollama_daemon()
-
         self._maybe_refresh_benchmarks()
 
         benchmarks = self._benchmarks or self._build_default_benchmarks()
@@ -382,12 +381,10 @@ class BatchRunner:
         to_install = self._apply_local_mode(benchmarks, local_mode)
         if to_install:
             from gateway_llm.installer import Installer
-
             Installer(interactive=False, assume_yes=True).ensure_models(to_install)
 
         providers = self._build_providers()
 
-        # Cloud-only : on retire ollama des providers de génération
         if local_mode == LocalMode.CLOUD_ONLY:
             providers = {k: v for k, v in providers.items() if k != "ollama"}
             log.info("Providers cloud-only : %s", list(providers.keys()))
@@ -414,6 +411,11 @@ class BatchRunner:
         )
         classifier = self._build_classifier(providers)
 
+        # --- Comptage préalable pour la barre de progression ---
+        total_tasks = sum(1 for _ in self._iter_tasks())
+        processed_since_start = 0
+        # -------------------------------------------------------
+
         checkpoint = Checkpoint(self._out)
         stats = BatchStats(done_before=checkpoint.done_count)
         start = time.monotonic()
@@ -422,6 +424,7 @@ class BatchRunner:
             if self._cancel_event is not None and self._cancel_event.is_set():
                 log.info("Annulation demandée, arrêt du batch")
                 break
+
             stats.total += 1
             task_id = task.get("id")
             if not task_id:
@@ -474,6 +477,13 @@ class BatchRunner:
                 stats.human_review += 1
                 stats.per_domain[domain] = stats.per_domain.get(domain, 0) + 1
                 log.info("[%s] → human_review (%s)", task_id, classification.status)
+
+                processed_since_start += 1
+                if self._progress_callback is not None:
+                    elapsed = time.monotonic() - start
+                    current_total = stats.done_before + processed_since_start
+                    speed = processed_since_start / elapsed if elapsed > 0 else 0
+                    self._progress_callback(current_total, total_tasks, speed)
                 continue
 
             if classification is not None and classification.human_priority >= 9:
@@ -495,6 +505,13 @@ class BatchRunner:
                     task_id,
                     classification.human_priority,
                 )
+
+                processed_since_start += 1
+                if self._progress_callback is not None:
+                    elapsed = time.monotonic() - start
+                    current_total = stats.done_before + processed_since_start
+                    speed = processed_since_start / elapsed if elapsed > 0 else 0
+                    self._progress_callback(current_total, total_tasks, speed)
                 continue
 
             # 3) Préparation image
@@ -562,6 +579,13 @@ class BatchRunner:
 
             checkpoint.append(record)
             stats.processed += 1
+
+            processed_since_start += 1
+            if self._progress_callback is not None:
+                elapsed = time.monotonic() - start
+                current_total = stats.done_before + processed_since_start
+                speed = processed_since_start / elapsed if elapsed > 0 else 1.0
+                self._progress_callback(current_total, total_tasks, speed)
 
         stats.elapsed_s = time.monotonic() - start
         self._print_report(stats)
