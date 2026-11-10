@@ -27,12 +27,14 @@ __all__ = [
     "save_local_mode",
 ]
 
+
 class LocalMode(StrEnum):
     """Mode d'exécution choisi par l'utilisateur au premier lancement."""
-    CLOUD_ONLY = "cloud_only"   # uniquement les API cloud
-    LOCAL_ONLY = "local_only"   # uniquement Ollama
-    HYBRID = "hybrid"           # local existant + cloud complémentaire
-    DEFAULT = "default"         # les modèles bootstrap (qwen légers)
+
+    CLOUD_ONLY = "cloud_only"  # uniquement les API cloud
+    LOCAL_ONLY = "local_only"  # uniquement Ollama
+    HYBRID = "hybrid"  # local existant + cloud complémentaire
+    DEFAULT = "default"  # les modèles bootstrap (qwen légers)
 
 
 _CONFIG_DIR = pathlib.Path.home() / ".gateway-llm"
@@ -57,6 +59,7 @@ def save_local_mode(mode: LocalMode) -> None:
         yaml.safe_dump({"local_mode": mode.value}),
         encoding="utf-8",
     )
+
 
 class ProviderConfig(BaseModel):
     type: Literal["openai_compat", "ollama", "cloudflare"]

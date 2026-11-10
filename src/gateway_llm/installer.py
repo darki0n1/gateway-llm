@@ -110,7 +110,7 @@ class Installer:
                 errors="replace",
                 bufsize=1,
             )
-            
+
             if proc.stdout:
                 for line in proc.stdout:
                     line = line.rstrip()

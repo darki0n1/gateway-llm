@@ -53,9 +53,7 @@ class PowerShellVaultBackend(SecretBackend):
         # powershell.exe (PS5.1) est souvent celui qui a le module
         # quand pwsh (PS7 Store) ne l'a pas.
         self._candidates: list[str] = [
-            p
-            for p in (shutil.which("powershell"), shutil.which("pwsh"))
-            if p is not None
+            p for p in (shutil.which("powershell"), shutil.which("pwsh")) if p is not None
         ]
         self._ps_exe: str | None = None
 
@@ -163,6 +161,7 @@ class PowerShellVaultBackend(SecretBackend):
             return r.returncode == 0
         except Exception:
             return False
+
 
 # ─── HashiCorp Vault ──────────────────────────────────────────
 class HashiCorpVaultBackend(SecretBackend):

@@ -185,9 +185,7 @@ class BatchRunner:
             from gateway_llm.local_selector import select_local_models
 
             hw = self._hardware or detect_hardware()
-            selected = select_local_models(
-                benchmarks, hw, domains=list(self._cfg.domains.keys())
-            )
+            selected = select_local_models(benchmarks, hw, domains=list(self._cfg.domains.keys()))
             to_install = sorted({m for models in selected.values() for m in models})
             if to_install:
                 log.info(
@@ -197,9 +195,7 @@ class BatchRunner:
                     ", ".join(to_install),
                 )
             else:
-                log.warning(
-                    "Aucun modèle local sélectionnable (benchmarks ou hardware)"
-                )
+                log.warning("Aucun modèle local sélectionnable (benchmarks ou hardware)")
             return to_install
 
         # DEFAULT
@@ -301,9 +297,7 @@ class BatchRunner:
             if flex is not None:
                 log.info("Classifieur cloud-only via flexrouter (bucket 'low')")
                 return TaskClassifier(provider=flex, model="low")
-            log.warning(
-                "Mode cloud-only mais flexrouter absent : classification désactivée"
-            )
+            log.warning("Mode cloud-only mais flexrouter absent : classification désactivée")
             return None
 
         ollama = providers.get("ollama")
@@ -381,6 +375,7 @@ class BatchRunner:
         to_install = self._apply_local_mode(benchmarks, local_mode)
         if to_install:
             from gateway_llm.installer import Installer
+
             Installer(interactive=False, assume_yes=True).ensure_models(to_install)
 
         providers = self._build_providers()
@@ -390,14 +385,10 @@ class BatchRunner:
             log.info("Providers cloud-only : %s", list(providers.keys()))
 
         if not providers:
-            raise RuntimeError(
-                "Aucun provider disponible. Vérifiez vos secrets ou votre mode."
-            )
+            raise RuntimeError("Aucun provider disponible. Vérifiez vos secrets ou votre mode.")
 
         budget = (
-            BudgetTracker(max_eur=self._max_cost_eur)
-            if self._max_cost_eur is not None
-            else None
+            BudgetTracker(max_eur=self._max_cost_eur) if self._max_cost_eur is not None else None
         )
         router = Router(
             config=self._cfg,
@@ -442,9 +433,7 @@ class BatchRunner:
             # 1) Classification si domaine absent
             if domain is None:
                 if classifier is not None:
-                    classification = classifier.classify(
-                        text, task.get("description", "")
-                    )
+                    classification = classifier.classify(text, task.get("description", ""))
                     domain = classification.domain
                     stats.classified += 1
                     log.info(

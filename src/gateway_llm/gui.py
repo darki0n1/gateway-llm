@@ -166,12 +166,10 @@ class ModeDialog(tk.Toplevel):
         for mode, title, desc in options:
             frame = ttk.Frame(self)
             frame.pack(fill="x", padx=20, pady=4)
-            ttk.Radiobutton(
-                frame, text=title, variable=self.var, value=mode.value
-            ).pack(anchor="w")
-            ttk.Label(
-                frame, text=desc, foreground="gray", justify="left"
-            ).pack(anchor="w", padx=(24, 0))
+            ttk.Radiobutton(frame, text=title, variable=self.var, value=mode.value).pack(anchor="w")
+            ttk.Label(frame, text=desc, foreground="gray", justify="left").pack(
+                anchor="w", padx=(24, 0)
+            )
 
         ttk.Button(self, text="Valider", command=self._ok).pack(pady=16)
         self.transient(parent)
@@ -212,36 +210,28 @@ class PrepareTab(ttk.Frame):
         ).grid(row=1, column=0, columnspan=3, sticky="ew", padx=(40, 40), pady=(0, 12))
 
         hint = (
-            "Emplacement(s) — glisser-déposer accepté :"
-            if _DND_AVAILABLE
-            else "Emplacement(s) :"
+            "Emplacement(s) — glisser-déposer accepté :" if _DND_AVAILABLE else "Emplacement(s) :"
         )
-        ttk.Label(self, text=hint).grid(
-            row=2, column=0, sticky="w", padx=(40, 0), pady=(0, 4)
-        )
-        
+        ttk.Label(self, text=hint).grid(row=2, column=0, sticky="w", padx=(40, 0), pady=(0, 4))
+
         list_frame = ttk.Frame(self)
         list_frame.grid(row=3, column=0, columnspan=2, sticky="nsew", padx=(40, 0))
         list_frame.rowconfigure(0, weight=1)
         list_frame.columnconfigure(0, weight=1)
 
-        self.paths_listbox = tk.Listbox(
-            list_frame, height=5, selectmode="extended"
-        )
+        self.paths_listbox = tk.Listbox(list_frame, height=5, selectmode="extended")
         self.paths_listbox.grid(row=0, column=0, sticky="nsew")
 
-        scroll = ttk.Scrollbar(
-            list_frame, orient="vertical", command=self.paths_listbox.yview
-        )
+        scroll = ttk.Scrollbar(list_frame, orient="vertical", command=self.paths_listbox.yview)
         scroll.grid(row=0, column=1, sticky="ns")
         self.paths_listbox.config(yscrollcommand=scroll.set)
 
         btn_frame = ttk.Frame(self)
         btn_frame.grid(row=3, column=2, padx=(6, 40), sticky="n")
         ttk.Button(btn_frame, text="Ajouter…", command=self._add_sources).pack(fill="x")
-        ttk.Button(
-            btn_frame, text="Retirer", command=self._remove_selected
-        ).pack(fill="x", pady=(4, 0))
+        ttk.Button(btn_frame, text="Retirer", command=self._remove_selected).pack(
+            fill="x", pady=(4, 0)
+        )
         ttk.Button(
             btn_frame,
             text="Vider",
@@ -261,15 +251,13 @@ class PrepareTab(ttk.Frame):
         ttk.Label(self, text="Fichier de sortie (.jsonl) :").grid(
             row=6, column=0, sticky="w", padx=(40, 0), pady=(12, 4)
         )
-        self.out_var = tk.StringVar(
-            value=str(pathlib.Path.cwd() / "tasks.jsonl")
-        )
+        self.out_var = tk.StringVar(value=str(pathlib.Path.cwd() / "tasks.jsonl"))
         ttk.Entry(self, textvariable=self.out_var).grid(
             row=7, column=0, columnspan=2, sticky="ew", padx=(40, 0)
         )
-        ttk.Button(
-            self, text="Enregistrer sous…", command=self._pick_output
-        ).grid(row=7, column=2, padx=(6, 40))
+        ttk.Button(self, text="Enregistrer sous…", command=self._pick_output).grid(
+            row=7, column=2, padx=(6, 40)
+        )
 
         ttk.Button(
             self,
@@ -294,9 +282,7 @@ class PrepareTab(ttk.Frame):
         if stype == "Fichier(s) CSV":
             self.prompt_text.delete("1.0", "end")
             self.prompt_text.insert("1.0", "Calcule le total de la recette.")
-            paths = filedialog.askopenfilenames(
-                filetypes=[("CSV", "*.csv"), ("Tous", "*.*")]
-            )
+            paths = filedialog.askopenfilenames(filetypes=[("CSV", "*.csv"), ("Tous", "*.*")])
         elif stype.startswith("Dossier"):
             p = filedialog.askdirectory()
             paths = (p,) if p else ()
@@ -305,8 +291,7 @@ class PrepareTab(ttk.Frame):
                 filetypes=[
                     (
                         "Tous supportés",
-                        "*.png *.jpg *.jpeg *.gif *.webp *.bmp "
-                        "*.txt *.md *.html *.eml *.csv",
+                        "*.png *.jpg *.jpeg *.gif *.webp *.bmp *.txt *.md *.html *.eml *.csv",
                     ),
                     ("Images", "*.png *.jpg *.jpeg *.gif *.webp *.bmp"),
                     ("Textes", "*.txt *.md *.html *.eml"),
@@ -359,13 +344,9 @@ class PrepareTab(ttk.Frame):
                 return
 
             if stype == "Dossier d'images":
-                n = intake_from_folder(
-                    pathlib.Path(sources[0]), out, prompt_template=prompt
-                )
+                n = intake_from_folder(pathlib.Path(sources[0]), out, prompt_template=prompt)
             elif stype.startswith("Dossier de fichiers texte"):
-                n = intake_from_text(
-                    pathlib.Path(sources[0]), out, prompt_template=prompt
-                )
+                n = intake_from_text(pathlib.Path(sources[0]), out, prompt_template=prompt)
             elif stype == "Fichier(s) CSV":
                 paths = [pathlib.Path(p) for p in sources]
                 safe_prompt = prompt.replace("{", "{{").replace("}", "}}")
@@ -374,9 +355,7 @@ class PrepareTab(ttk.Frame):
                     if safe_prompt
                     else "Voici un tableau :\n\n{table}"
                 )
-                n = intake_from_csv_multi(
-                    paths, out, prompt_template=final_template
-                )
+                n = intake_from_csv_multi(paths, out, prompt_template=final_template)
             elif stype == "Mixte (images + textes + CSV)":
                 n = intake_mixed(
                     [pathlib.Path(p) for p in sources],
@@ -384,14 +363,11 @@ class PrepareTab(ttk.Frame):
                     consigne=prompt,
                 )
             else:  # URLs
-                n = intake_from_urls(
-                    pathlib.Path(sources[0]), out, prompt_template=prompt
-                )
+                n = intake_from_urls(pathlib.Path(sources[0]), out, prompt_template=prompt)
 
             messagebox.showinfo(
                 "Succès",
-                f"{n} tâches écrites dans :\n{out}\n\n"
-                "Passez à l'onglet « Lancer le traitement ».",
+                f"{n} tâches écrites dans :\n{out}\n\nPassez à l'onglet « Lancer le traitement ».",
             )
         except Exception as e:
             messagebox.showerror("Erreur", str(e))
@@ -426,16 +402,12 @@ class RunTab(ttk.Frame):
         ttk.Entry(self, textvariable=self.output_var).grid(
             row=3, column=0, columnspan=2, sticky="ew"
         )
-        ttk.Button(
-            self, text="Enregistrer sous…", command=self._pick_output
-        ).grid(row=3, column=2, padx=(6, 0))
+        ttk.Button(self, text="Enregistrer sous…", command=self._pick_output).grid(
+            row=3, column=2, padx=(6, 0)
+        )
 
-        self._advanced_frame = ttk.LabelFrame(
-            self, text="Options avancées", padding=10
-        )
-        self._advanced_frame.grid(
-            row=4, column=0, columnspan=3, sticky="ew", pady=(12, 0)
-        )
+        self._advanced_frame = ttk.LabelFrame(self, text="Options avancées", padding=10)
+        self._advanced_frame.grid(row=4, column=0, columnspan=3, sticky="ew", pady=(12, 0))
         self._advanced_frame.grid_remove()
 
         ttk.Label(
@@ -446,17 +418,17 @@ class RunTab(ttk.Frame):
         ttk.Entry(self._advanced_frame, textvariable=self.config_var).grid(
             row=1, column=0, columnspan=2, sticky="ew"
         )
-        ttk.Button(
-            self._advanced_frame, text="Parcourir…", command=self._pick_config
-        ).grid(row=1, column=2, padx=(6, 0))
+        ttk.Button(self._advanced_frame, text="Parcourir…", command=self._pick_config).grid(
+            row=1, column=2, padx=(6, 0)
+        )
 
-        ttk.Label(
-            self._advanced_frame, text="Budget maximal (€) :"
-        ).grid(row=2, column=0, sticky="w", pady=(8, 4))
+        ttk.Label(self._advanced_frame, text="Budget maximal (€) :").grid(
+            row=2, column=0, sticky="w", pady=(8, 4)
+        )
         self.max_cost_var = tk.StringVar()
-        ttk.Entry(
-            self._advanced_frame, textvariable=self.max_cost_var
-        ).grid(row=3, column=0, sticky="ew")
+        ttk.Entry(self._advanced_frame, textvariable=self.max_cost_var).grid(
+            row=3, column=0, sticky="ew"
+        )
 
         self._advanced_btn = ttk.Button(
             self,
@@ -470,9 +442,7 @@ class RunTab(ttk.Frame):
         action_frame.columnconfigure(0, weight=1)
         action_frame.columnconfigure(1, weight=1)
 
-        self.run_btn = ttk.Button(
-            action_frame, text="Lancer le traitement", command=self._launch
-        )
+        self.run_btn = ttk.Button(action_frame, text="Lancer le traitement", command=self._launch)
         self.run_btn.grid(row=0, column=0, sticky="ew", padx=(0, 4))
 
         self.cancel_btn = ttk.Button(
@@ -483,27 +453,21 @@ class RunTab(ttk.Frame):
         )
         self.cancel_btn.grid(row=0, column=1, sticky="ew", padx=(4, 0))
 
-        self.progress = ttk.Progressbar(
-            self, mode="determinate", maximum=100
-        )
+        self.progress = ttk.Progressbar(self, mode="determinate", maximum=100)
         self.progress.grid(row=7, column=0, columnspan=3, sticky="ew")
 
         self.eta_var = tk.StringVar(value="")
-        ttk.Label(
-            self, textvariable=self.eta_var, foreground="gray"
-        ).grid(row=8, column=0, columnspan=3, sticky="w", pady=(4, 0))
+        ttk.Label(self, textvariable=self.eta_var, foreground="gray").grid(
+            row=8, column=0, columnspan=3, sticky="w", pady=(4, 0)
+        )
 
         log_frame = ttk.Frame(self)
         log_frame.grid(row=9, column=0, columnspan=3, sticky="nsew", pady=(10, 0))
         self.rowconfigure(9, weight=1)
         self.columnconfigure(0, weight=1)
-        self.log_text = tk.Text(
-            log_frame, height=10, wrap="word", state="disabled"
-        )
+        self.log_text = tk.Text(log_frame, height=10, wrap="word", state="disabled")
         self.log_text.pack(side="left", fill="both", expand=True)
-        scroll = ttk.Scrollbar(
-            log_frame, orient="vertical", command=self.log_text.yview
-        )
+        scroll = ttk.Scrollbar(log_frame, orient="vertical", command=self.log_text.yview)
         scroll.pack(side="right", fill="y")
         self.log_text.config(yscrollcommand=scroll.set)
 
@@ -522,9 +486,7 @@ class RunTab(ttk.Frame):
         self.log_text.config(state="disabled")
 
     def _pick_input(self) -> None:
-        p = filedialog.askopenfilename(
-            filetypes=[("JSONL", "*.jsonl"), ("Tous", "*.*")]
-        )
+        p = filedialog.askopenfilename(filetypes=[("JSONL", "*.jsonl"), ("Tous", "*.*")])
         if p:
             self.input_var.set(p)
 
@@ -537,18 +499,14 @@ class RunTab(ttk.Frame):
             self.output_var.set(p)
 
     def _pick_config(self) -> None:
-        p = filedialog.askopenfilename(
-            filetypes=[("YAML", "*.yaml *.yml"), ("Tous", "*.*")]
-        )
+        p = filedialog.askopenfilename(filetypes=[("YAML", "*.yaml *.yml"), ("Tous", "*.*")])
         if p:
             self.config_var.set(p)
 
     def _cancel(self) -> None:
         if self._cancel_event is not None and not self._cancel_event.is_set():
             self._cancel_event.set()
-            self._append_log(
-                "⚠ Annulation demandée, arrêt après la tâche en cours…"
-            )
+            self._append_log("⚠ Annulation demandée, arrêt après la tâche en cours…")
 
     def _update_progress(self, current: int, total: int, speed: float) -> None:
         if total <= 0:
@@ -567,35 +525,25 @@ class RunTab(ttk.Frame):
         else:
             eta = "…"
 
-        self.eta_var.set(
-            f"Progression : {current}/{total} ({pct:.1f}%) — reste ~{eta}"
-        )
+        self.eta_var.set(f"Progression : {current}/{total} ({pct:.1f}%) — reste ~{eta}")
 
     def _launch(self) -> None:
         if self._thread and self._thread.is_alive():
-            messagebox.showwarning(
-                "En cours", "Un traitement est déjà en cours."
-            )
+            messagebox.showwarning("En cours", "Un traitement est déjà en cours.")
             return
 
         inp = pathlib.Path(self.input_var.get())
         if not inp.exists():
-            messagebox.showerror(
-                "Erreur", f"Fichier d'entrée introuvable : {inp}"
-            )
+            messagebox.showerror("Erreur", f"Fichier d'entrée introuvable : {inp}")
             return
 
         out_raw = self.output_var.get().strip()
         out = pathlib.Path(out_raw) if out_raw else inp.with_name("results.jsonl")
 
         cfg_raw = self.config_var.get().strip()
-        cfg_file: pathlib.Path | None = (
-            pathlib.Path(cfg_raw) if cfg_raw else None
-        )
+        cfg_file: pathlib.Path | None = pathlib.Path(cfg_raw) if cfg_raw else None
         if cfg_file is not None and not cfg_file.exists():
-            messagebox.showerror(
-                "Erreur", f"Configuration introuvable : {cfg_file}"
-            )
+            messagebox.showerror("Erreur", f"Configuration introuvable : {cfg_file}")
             return
 
         max_cost = None
@@ -604,9 +552,7 @@ class RunTab(ttk.Frame):
             try:
                 max_cost = float(raw)
             except ValueError:
-                messagebox.showerror(
-                    "Erreur", "Budget invalide (nombre attendu)."
-                )
+                messagebox.showerror("Erreur", "Budget invalide (nombre attendu).")
                 return
 
         try:
@@ -635,9 +581,7 @@ class RunTab(ttk.Frame):
         self.cancel_btn.config(state="normal")
         self._append_log(f"Lancement sur {inp.name} → {out.name}")
         self._append_log(
-            f"Config : {cfg_file}"
-            if cfg_file is not None
-            else "Config : intégrée (par défaut)"
+            f"Config : {cfg_file}" if cfg_file is not None else "Config : intégrée (par défaut)"
         )
 
         if self._log_handler is None:
@@ -691,18 +635,14 @@ class RunTab(ttk.Frame):
         self._append_log(f"✅ Terminé : {output}")
         if self._on_success_cb is not None:
             self._on_success_cb(output)
-        messagebox.showinfo(
-            "Terminé", f"Traitement terminé.\nRésultats dans :\n{output}"
-        )
+        messagebox.showinfo("Terminé", f"Traitement terminé.\nRésultats dans :\n{output}")
 
     def _on_error(self, exc: Exception) -> None:
         self.eta_var.set("Erreur")
         self.run_btn.config(state="normal")
         self.cancel_btn.config(state="disabled")
         self._append_log(f"❌ {exc}")
-        messagebox.showerror(
-            "Erreur", f"Le traitement a échoué :\n{exc}"
-        )
+        messagebox.showerror("Erreur", f"Le traitement a échoué :\n{exc}")
 
 
 # ─── Onglet 3 : Visualisation des résultats ────────────────────
@@ -722,9 +662,7 @@ class ResultsTab(ttk.Frame):
         ttk.Entry(top, textvariable=self.file_var).pack(
             side="left", fill="x", expand=True, padx=(8, 8)
         )
-        ttk.Button(
-            top, text="Parcourir…", command=self._pick
-        ).pack(side="left", padx=(0, 4))
+        ttk.Button(top, text="Parcourir…", command=self._pick).pack(side="left", padx=(0, 4))
         ttk.Button(top, text="Charger", command=self._load).pack(side="left")
 
         self.notebook = ttk.Notebook(self)
@@ -737,9 +675,7 @@ class ResultsTab(ttk.Frame):
         sum_frame = ttk.Frame(self.summary_frame)
         sum_frame.pack(fill="both", expand=True)
         self.summary_text = tk.Text(sum_frame, wrap="word", state="disabled")
-        sum_scroll = ttk.Scrollbar(
-            sum_frame, orient="vertical", command=self.summary_text.yview
-        )
+        sum_scroll = ttk.Scrollbar(sum_frame, orient="vertical", command=self.summary_text.yview)
         self.summary_text.pack(side="left", fill="both", expand=True)
         sum_scroll.pack(side="right", fill="y")
         self.summary_text.config(yscrollcommand=sum_scroll.set)
@@ -753,9 +689,7 @@ class ResultsTab(ttk.Frame):
 
         self.review_list = tk.Listbox(rev_frame)
         self.review_list.pack(fill="both", expand=True, side="left")
-        list_scroll = ttk.Scrollbar(
-            rev_frame, orient="vertical", command=self.review_list.yview
-        )
+        list_scroll = ttk.Scrollbar(rev_frame, orient="vertical", command=self.review_list.yview)
         list_scroll.pack(side="right", fill="y")
         self.review_list.config(yscrollcommand=list_scroll.set)
         self.review_list.bind("<<ListboxSelect>>", self._on_review_select)
@@ -766,9 +700,7 @@ class ResultsTab(ttk.Frame):
         det_frame = ttk.Frame(self.detail_frame)
         det_frame.pack(fill="both", expand=True)
         self.detail_text = tk.Text(det_frame, wrap="word", state="disabled")
-        det_scroll = ttk.Scrollbar(
-            det_frame, orient="vertical", command=self.detail_text.yview
-        )
+        det_scroll = ttk.Scrollbar(det_frame, orient="vertical", command=self.detail_text.yview)
         self.detail_text.pack(side="left", fill="both", expand=True)
         det_scroll.pack(side="right", fill="y")
         self.detail_text.config(yscrollcommand=det_scroll.set)
@@ -776,9 +708,7 @@ class ResultsTab(ttk.Frame):
 
         btn_frame = ttk.Frame(self.detail_frame)
         btn_frame.pack(fill="x", pady=(6, 0))
-        ttk.Button(btn_frame, text="Accepter", command=self._accept).pack(
-            side="left", padx=(0, 6)
-        )
+        ttk.Button(btn_frame, text="Accepter", command=self._accept).pack(side="left", padx=(0, 6))
         ttk.Button(btn_frame, text="Rejeter", command=self._reject).pack(side="left")
 
         # ─── Tout ───────────────────────────────────────────────
@@ -900,9 +830,7 @@ class ResultsTab(ttk.Frame):
         self.after(2000, self._poll)
 
     def _pick(self) -> None:
-        p = filedialog.askopenfilename(
-            filetypes=[("JSONL", "*.jsonl"), ("Tous", "*.*")]
-        )
+        p = filedialog.askopenfilename(filetypes=[("JSONL", "*.jsonl"), ("Tous", "*.*")])
         if p:
             self.file_var.set(p)
             self._auto_path = None
@@ -946,14 +874,11 @@ class ResultsTab(ttk.Frame):
 
     def _refresh(self) -> None:
         total = len(self._results)
-        approved = sum(
-            1 for r in self._results if r.get("status") == "approved"
-        )
+        approved = sum(1 for r in self._results if r.get("status") == "approved")
         review = sum(
             1
             for r in self._results
-            if r.get("status") == "human_review"
-            or r.get("guardrail_passed") is False
+            if r.get("status") == "human_review" or r.get("guardrail_passed") is False
         )
         failed = total - approved - review
         total_cost = sum(r.get("cost_eur", 0.0) for r in self._results)
@@ -972,10 +897,7 @@ class ResultsTab(ttk.Frame):
 
         self.review_list.delete(0, "end")
         for r in self._results:
-            if (
-                r.get("status") == "human_review"
-                or r.get("guardrail_passed") is False
-            ):
+            if r.get("status") == "human_review" or r.get("guardrail_passed") is False:
                 rid = r.get("id", "?")
                 reason = r.get("guardrail_reason", "—")
                 self.review_list.insert("end", f"{rid}  —  {reason}")
@@ -1003,10 +925,7 @@ class ResultsTab(ttk.Frame):
         target = None
         count = 0
         for r in self._results:
-            if (
-                r.get("status") == "human_review"
-                or r.get("guardrail_passed") is False
-            ):
+            if r.get("status") == "human_review" or r.get("guardrail_passed") is False:
                 if count == idx:
                     target = r
                     break
@@ -1055,10 +974,7 @@ class ResultsTab(ttk.Frame):
         target = None
         count = 0
         for r in self._results:
-            if (
-                r.get("status") == "human_review"
-                or r.get("guardrail_passed") is False
-            ):
+            if r.get("status") == "human_review" or r.get("guardrail_passed") is False:
                 if count == idx:
                     target = r
                     break
@@ -1068,12 +984,7 @@ class ResultsTab(ttk.Frame):
 
         decisions_path = pathlib.Path("decisions.jsonl")
         with decisions_path.open("a", encoding="utf-8") as f:
-            f.write(
-                json.dumps(
-                    {"id": target.get("id"), "decision": decision}
-                )
-                + "\n"
-            )
+            f.write(json.dumps({"id": target.get("id"), "decision": decision}) + "\n")
         messagebox.showinfo(
             "Enregistré",
             f"Décision '{decision}' enregistrée pour {target.get('id')}",
@@ -1118,14 +1029,12 @@ class SecretsTab(ttk.Frame):
             text="Enregistrer la configuration",
             command=self._save,
         ).pack(pady=8)
-        ttk.Button(
-            self, text="Tester la connexion", command=self._test
-        ).pack(pady=4)
+        ttk.Button(self, text="Tester la connexion", command=self._test).pack(pady=4)
 
         self.status_var = tk.StringVar()
-        ttk.Label(
-            self, textvariable=self.status_var, foreground="gray"
-        ).pack(anchor="w", pady=(8, 0))
+        ttk.Label(self, textvariable=self.status_var, foreground="gray").pack(
+            anchor="w", pady=(8, 0)
+        )
 
     def _save(self) -> None:
         from gateway_llm.secrets import save_backend_config
@@ -1145,9 +1054,7 @@ class SecretsTab(ttk.Frame):
                 self.status_var.set(f"✅ {b.name} : opérationnel")
             else:
                 reason = getattr(b, "_error", None) or "raison inconnue"
-                self.status_var.set(
-                    f"⚠ {b.name} : non disponible — {reason}"
-                )
+                self.status_var.set(f"⚠ {b.name} : non disponible — {reason}")
         except Exception as e:
             self.status_var.set(f"❌ {e}")
 
@@ -1160,9 +1067,7 @@ class App(_TkBase):  # type: ignore[misc]
         self.geometry("950x700")
 
         self.status_var = tk.StringVar(value="Prêt")
-        self.status_bar = ttk.Label(
-            self, textvariable=self.status_var, anchor="w", relief="sunken"
-        )
+        self.status_bar = ttk.Label(self, textvariable=self.status_var, anchor="w", relief="sunken")
         self.status_bar.pack(side="bottom", fill="x")
 
         mode_file = pathlib.Path.home() / ".gateway-llm" / "config.yaml"
@@ -1214,9 +1119,7 @@ class App(_TkBase):  # type: ignore[misc]
             try:
                 from playwright.sync_api import sync_playwright  # noqa: F401, type: ignore[import-not-found]
             except ImportError:
-                log.info(
-                    "Playwright non installé, scraping utilisera l'API de secours"
-                )
+                log.info("Playwright non installé, scraping utilisera l'API de secours")
                 self.after(
                     0,
                     self.status_var.set,
@@ -1224,14 +1127,10 @@ class App(_TkBase):  # type: ignore[misc]
                 )
                 return
 
-            self.after(
-                0, self.status_var.set, "Vérification de Chromium (Playwright)…"
-            )
+            self.after(0, self.status_var.set, "Vérification de Chromium (Playwright)…")
 
             if _playwright_chromium_ok():
-                self.after(
-                    0, self.status_var.set, "Chromium (Playwright) : prêt"
-                )
+                self.after(0, self.status_var.set, "Chromium (Playwright) : prêt")
                 return
 
             self.after(

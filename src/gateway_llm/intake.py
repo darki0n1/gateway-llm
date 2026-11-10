@@ -116,9 +116,7 @@ def _format_table(rows: list[dict], fieldnames: Sequence[str]) -> str:
     """Formate un lot de lignes en pseudo-JSON compact."""
     lines = []
     for i, row in enumerate(rows, 1):
-        pairs = ", ".join(
-            f"{k}: {v}" for k, v in row.items() if k in fieldnames
-        )
+        pairs = ", ".join(f"{k}: {v}" for k, v in row.items() if k in fieldnames)
         lines.append(f"Ligne {i}: {{{pairs}}}")
     return "\n".join(lines)
 
@@ -166,7 +164,7 @@ def intake_from_csv(
                 task_text=prompt,
                 domain=domain,
                 sensitivity=sensitivity,
-                source=f"{csv_path.name}:rows{batch_idx}-{batch_idx+len(batch)}",
+                source=f"{csv_path.name}:rows{batch_idx}-{batch_idx + len(batch)}",
             )
         )
 
@@ -251,9 +249,7 @@ def intake_mixed(
                 log.warning("Lecture échouée %s: %s", t, e)
 
         for i, img in enumerate(images, 1):
-            parts.append(
-                f"\n--- Image {i} : {img.name} (voir image jointe) ---"
-            )
+            parts.append(f"\n--- Image {i} : {img.name} (voir image jointe) ---")
 
         prompt = "\n".join(parts)
         # Une seule tâche pour toutes les images (le modèle les reçoit toutes)
@@ -304,9 +300,7 @@ def intake_mixed(
                     rec = json.loads(line)
                     rec["id"] = f"mix-{csv_p.stem}-{rec.get('id', '?')}"
                     filtered = {
-                        k: v
-                        for k, v in rec.items()
-                        if k in IntakeTask.__dataclass_fields__
+                        k: v for k, v in rec.items() if k in IntakeTask.__dataclass_fields__
                     }
                     tasks.append(IntakeTask(**filtered))
             tmp_out.unlink(missing_ok=True)
@@ -353,9 +347,7 @@ def intake_from_urls(
     ]
 
     tasks = []
-    headers = {
-        "User-Agent": "gateway-llm-intake/0.1 (+https://github.com/<vous>/gateway-llm)"
-    }
+    headers = {"User-Agent": "gateway-llm-intake/0.1 (+https://github.com/<vous>/gateway-llm)"}
     for i, url in enumerate(urls):
         if respect_robots and not _check_robots(url):
             log.warning("robots.txt interdit %s, skip", url)

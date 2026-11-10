@@ -128,9 +128,8 @@ def parse_model_cards(html: str) -> list[dict]:
                     "cloud",
                 ):
                     capabilities.append(txt_lower)
-            elif (
-                ("bg-[#ddf4ff]" in cls or "bg-blue-100" in cls)
-                and re.fullmatch(r"[\d.]+[bm]", txt_lower)
+            elif ("bg-[#ddf4ff]" in cls or "bg-blue-100" in cls) and re.fullmatch(
+                r"[\d.]+[bm]", txt_lower
             ):
                 base_sizes.append(txt_lower)
 

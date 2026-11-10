@@ -141,6 +141,7 @@ def test_vault_caches_result(mock_run, _mock_which):
     # 2e et 3e get() = cache hit → 0 appel
     assert mock_run.call_count == 2
 
+
 @patch("gateway_llm.secrets.shutil.which", return_value="/usr/bin/pwsh")
 @patch("gateway_llm.secrets.subprocess.run")
 def test_vault_probe_cached_across_keys(mock_run, _mock_which):
@@ -152,6 +153,7 @@ def test_vault_probe_cached_across_keys(mock_run, _mock_which):
     # 1 probe + 2 get = 3 appels.
     # Sans cache du probe : 2 probes + 2 get = 4.
     assert mock_run.call_count == 3
+
 
 @patch("gateway_llm.secrets.shutil.which", return_value="/usr/bin/pwsh")
 @patch("gateway_llm.secrets.subprocess.run")

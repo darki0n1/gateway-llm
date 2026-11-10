@@ -50,10 +50,7 @@ def _make_runner(
 # ─── progress_callback ─────────────────────────────────────────
 def test_progress_callback_called_per_task(tmp_path, minimal_config):
     """Le callback est appelé une fois par tâche avec (current, total, speed)."""
-    tasks = [
-        {"id": f"t{i}", "domain": "generation", "task_text": "hello"}
-        for i in range(3)
-    ]
+    tasks = [{"id": f"t{i}", "domain": "generation", "task_text": "hello"} for i in range(3)]
     input_file = _make_input(tmp_path, tasks)
     provider = FakeProvider("fake", [make_response("ok") for _ in range(3)])
 
@@ -62,9 +59,7 @@ def test_progress_callback_called_per_task(tmp_path, minimal_config):
     def cb(current: int, total: int, speed: float) -> None:
         calls.append((current, total, speed))
 
-    runner, _ = _make_runner(
-        tmp_path, input_file, minimal_config, provider, progress_callback=cb
-    )
+    runner, _ = _make_runner(tmp_path, input_file, minimal_config, provider, progress_callback=cb)
 
     with patch("gateway_llm.batch.load_local_mode", return_value=LocalMode.DEFAULT):
         runner._run_real()
@@ -97,16 +92,11 @@ def test_no_progress_callback_does_not_crash(tmp_path, minimal_config):
 # ─── Annulation ────────────────────────────────────────────────
 def test_cancel_event_stops_loop(tmp_path, minimal_config):
     """Si _cancel_event est set, la boucle s'arrête au premier tour."""
-    tasks = [
-        {"id": f"t{i}", "domain": "generation", "task_text": "hello"}
-        for i in range(5)
-    ]
+    tasks = [{"id": f"t{i}", "domain": "generation", "task_text": "hello"} for i in range(5)]
     input_file = _make_input(tmp_path, tasks)
     provider = FakeProvider("fake", [make_response("ok") for _ in range(5)])
 
-    runner, _ = _make_runner(
-        tmp_path, input_file, minimal_config, provider, progress_callback=None
-    )
+    runner, _ = _make_runner(tmp_path, input_file, minimal_config, provider, progress_callback=None)
 
     runner._cancel_event = threading.Event()
     runner._cancel_event.set()
@@ -120,10 +110,7 @@ def test_cancel_event_stops_loop(tmp_path, minimal_config):
 
 def test_cancel_event_partial_processing(tmp_path, minimal_config):
     """Si l'event est set après 2 tâches, seules 2 sont traitées."""
-    tasks = [
-        {"id": f"t{i}", "domain": "generation", "task_text": "hello"}
-        for i in range(5)
-    ]
+    tasks = [{"id": f"t{i}", "domain": "generation", "task_text": "hello"} for i in range(5)]
     input_file = _make_input(tmp_path, tasks)
     provider = FakeProvider("fake", [make_response("ok") for _ in range(5)])
 
@@ -135,9 +122,7 @@ def test_cancel_event_partial_processing(tmp_path, minimal_config):
         if call_count["n"] >= 2:
             cancel_event.set()
 
-    runner, _ = _make_runner(
-        tmp_path, input_file, minimal_config, provider, progress_callback=cb
-    )
+    runner, _ = _make_runner(tmp_path, input_file, minimal_config, provider, progress_callback=cb)
     runner._cancel_event = cancel_event
 
     with patch("gateway_llm.batch.load_local_mode", return_value=LocalMode.DEFAULT):
@@ -184,10 +169,7 @@ def test_resume_skips_already_done(tmp_path, minimal_config):
 # ─── Dry-run ───────────────────────────────────────────────────
 def test_dry_run_does_not_call_providers(tmp_path, minimal_config):
     """En dry-run, aucun provider n'est appelé."""
-    tasks = [
-        {"id": f"t{i}", "domain": "generation", "task_text": "hello"}
-        for i in range(3)
-    ]
+    tasks = [{"id": f"t{i}", "domain": "generation", "task_text": "hello"} for i in range(3)]
     input_file = _make_input(tmp_path, tasks)
     provider = FakeProvider("fake", [])
 

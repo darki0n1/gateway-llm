@@ -38,10 +38,8 @@ def parse_mgate(html: str) -> dict[str, float]:
     # Tentative 1 : chercher un tableau HTML
     for table in soup.find_all("table"):
         headers = [th.get_text(strip=True).lower() for th in table.find_all("th")]
-        model_idx = next((i for i, h in enumerate(headers)
-                         if "model" in h), None)
-        score_idx = next((i for i, h in enumerate(headers)
-                         if "score" in h or "overall" in h), None)
+        model_idx = next((i for i, h in enumerate(headers) if "model" in h), None)
+        score_idx = next((i for i, h in enumerate(headers) if "score" in h or "overall" in h), None)
         if model_idx is None or score_idx is None:
             continue
         for row in table.find_all("tr")[1:]:
@@ -61,6 +59,7 @@ def parse_mgate(html: str) -> dict[str, float]:
             text = script.string or ""
             if "leaderboard" in text.lower() and "model" in text.lower():
                 import re
+
                 m = re.search(r'\[\s*\{[^\]]*"model"[^\]]*\}\s*\]', text)
                 if m:
                     try:
@@ -93,9 +92,7 @@ def main() -> int:
         "last_updated": date.today().isoformat(),
         "source": "RWS TrainAI M-GATE leaderboard (scraped)",
         "notes": "Auto-généré par scripts/refresh_rws.py. Scores sur 5.",
-        "models": [
-            {"model": m, "overall_score": s} for m, s in sorted(scores.items())
-        ],
+        "models": [{"model": m, "overall_score": s} for m, s in sorted(scores.items())],
     }
     OUT.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
     print(f"✅ {len(scores)} modèles écrits dans {OUT}")

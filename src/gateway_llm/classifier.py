@@ -48,9 +48,9 @@ _STATUSES = (
 )
 
 # ─── Seuils calibrés (littérature 2026) ───────────────────────
-HIGH_CONFIDENCE = 0.82    # au-dessus : on accepte sans LLM
-LOW_CONFIDENCE = 0.60     # en-dessous : LLM obligatoire
-AMBIGUITY_GAP = 0.10      # top-2 trop proche du top-1 = ambigu
+HIGH_CONFIDENCE = 0.82  # au-dessus : on accepte sans LLM
+LOW_CONFIDENCE = 0.60  # en-dessous : LLM obligatoire
+AMBIGUITY_GAP = 0.10  # top-2 trop proche du top-1 = ambigu
 
 
 @dataclass
@@ -126,9 +126,7 @@ class TaskClassifier:
                 # On vérifie l'ambiguïté : si un autre domaine est proche,
                 # le sémantique n'est pas fiable → LLM.
                 second = self._second_best(task_text)
-                is_ambiguous = (
-                    second is not None and (score - second[1]) < self._gap
-                )
+                is_ambiguous = second is not None and (score - second[1]) < self._gap
                 if not is_ambiguous and self._provider is not None:
                     # Pas ambigu et LLM dispo : on tente le LLM pour
                     # confirmer, mais on garde le sémantique comme filet.
@@ -138,9 +136,7 @@ class TaskClassifier:
                         llm_result.decision_layer = "llm"
                         return llm_result
                     except Exception as e:
-                        log.warning(
-                            "LLM tiebreaker échoué, on garde le sémantique : %s", e
-                        )
+                        log.warning("LLM tiebreaker échoué, on garde le sémantique : %s", e)
 
                 # LLM indisponible ou ambigu : on garde le sémantique avec
                 # une priorité humaine plus élevée pour review.
@@ -183,9 +179,7 @@ class TaskClassifier:
             return None
         scores: list[tuple[str, float]] = []
         for domain, embs in router._domain_embeddings.items():
-            best = max(
-                router._cosine_similarity(emb, e) for e in embs
-            ) if embs else 0.0
+            best = max(router._cosine_similarity(emb, e) for e in embs) if embs else 0.0
             scores.append((domain, best))
         scores.sort(key=lambda x: x[1], reverse=True)
         if len(scores) < 2:

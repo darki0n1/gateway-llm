@@ -45,10 +45,10 @@ def parse_leaderboard(html: str, metric: str) -> dict[str, float]:
         if not headers:
             continue
         # Trouve les colonnes "model" et "score" (ou nommées différemment)
-        model_idx = next((i for i, h in enumerate(headers)
-                         if "model" in h or "name" in h), None)
-        score_idx = next((i for i, h in enumerate(headers)
-                         if "score" in h or metric in h or "%" in h), None)
+        model_idx = next((i for i, h in enumerate(headers) if "model" in h or "name" in h), None)
+        score_idx = next(
+            (i for i, h in enumerate(headers) if "score" in h or metric in h or "%" in h), None
+        )
         if model_idx is None or score_idx is None:
             continue
         for row in table.find_all("tr")[1:]:
@@ -88,9 +88,7 @@ def main() -> int:
         "last_updated": date.today().isoformat(),
         "source": "F5 Labs CASI / ARS leaderboards (scraped)",
         "notes": "Auto-généré par scripts/refresh_f5.py",
-        "models": [
-            {"model": m, **scores} for m, scores in sorted(merged.items())
-        ],
+        "models": [{"model": m, **scores} for m, scores in sorted(merged.items())],
     }
     OUT.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
     print(f"✅ {len(merged)} modèles écrits dans {OUT}")

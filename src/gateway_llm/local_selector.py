@@ -138,11 +138,7 @@ def select_local_models(
         for m in catalog:
             # Essaie plusieurs formes de normalisation
             normalized = normalize_model_name(m.name)
-            score = (
-                scores.get(normalized)
-                or scores.get(m.name)
-                or scores.get(m.full_name)
-            )
+            score = scores.get(normalized) or scores.get(m.name) or scores.get(m.full_name)
             if score is None:
                 continue
 
