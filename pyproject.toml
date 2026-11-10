@@ -7,7 +7,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "gateway-llm"
-version = "0.2.0"
+version = "0.2.1"
 description = "Quality-Gated Batch Router : routage LLM par cascade, guardrails, budget et résidence des données."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -101,12 +101,19 @@ testpaths = ["tests"]
 [tool.coverage.run]
 source = ["src/gateway_llm"]
 branch = true
+omit = [
+    # GUI Tkinter : nécessite un display, testée manuellement
+    "src/gateway_llm/gui.py",
+    # Entrypoint argparse : glue mince, testé de bout en bout via le CLI
+    "src/gateway_llm/cli.py",
+]
 
 [tool.coverage.report]
 exclude_lines = [
     "pragma: no cover",
     "if TYPE_CHECKING:",
     "raise NotImplementedError",
+    "if __name__ == .__main__.:",
 ]
 
 # ────────────────────────────────────────────────────────────────

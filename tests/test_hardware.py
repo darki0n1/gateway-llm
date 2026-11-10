@@ -130,9 +130,7 @@ def test_should_skip_zero_capacity_is_safe():
 @patch("gateway_llm.hardware.subprocess.run")
 @patch("gateway_llm.hardware.shutil.which")
 def test_detect_vram_nvidia(mock_which, mock_run):
-    mock_which.side_effect = (
-        lambda name: "/usr/bin/nvidia-smi" if name == "nvidia-smi" else None
-    )
+    mock_which.side_effect = lambda name: "/usr/bin/nvidia-smi" if name == "nvidia-smi" else None
     mock_run.return_value = MagicMock(stdout="8192\n", returncode=0)
     vram_gb, source = _detect_vram()
     assert vram_gb == pytest.approx(8.0)
@@ -142,9 +140,7 @@ def test_detect_vram_nvidia(mock_which, mock_run):
 @patch("gateway_llm.hardware.subprocess.run")
 @patch("gateway_llm.hardware.shutil.which")
 def test_detect_vram_rocm(mock_which, mock_run):
-    mock_which.side_effect = (
-        lambda name: "/opt/rocm/bin/rocm-smi" if name == "rocm-smi" else None
-    )
+    mock_which.side_effect = lambda name: "/opt/rocm/bin/rocm-smi" if name == "rocm-smi" else None
     # 8 Go en bytes
     mock_run.return_value = MagicMock(
         stdout='{"card0": {"VRAM Total Memory (B)": "8589934592"}}',

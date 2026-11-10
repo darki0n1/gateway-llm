@@ -158,7 +158,7 @@ def _detect_vram() -> tuple[float | None, str]:
                 text=True,
                 timeout=5,
             )
-            m = re.search(r'"VRAM Total Memory \(B\)":\s*(\d+)', out.stdout)
+            m = re.search(r'"VRAM Total Memory \(B\)":\s*"?(\d+)"?', out.stdout)
             if m:
                 return float(m.group(1)) / (1024**3), "rocm-smi"
         except Exception as e:

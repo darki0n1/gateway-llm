@@ -4,7 +4,17 @@ Toutes les modifications notables de ce projet sont documentées dans ce fichier
 
 Le format s'appuie sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
-## [Unreleased]
+## [0.2.1] — 2026-11-10
+
+### Added
+- `tests/test_hardware.py` : couverture complète de `HardwareInfo`
+  (`effective_capacity_gb`, `can_run`, `estimate_fit`, `should_skip`).
+- `tests/test_local_selector.py` : couverture complète de
+  `load_ollama_catalog` et `select_local_models` (filtrage capacité,
+  tri par score, top N, multi-domaines).
+
+### Fixed
+- Alignement de `__version__` avec `pyproject.toml` (0.2.0 → 0.2.1).
 
 ### Planned (0.3.0 — service & observabilité)
 - **FastAPI** : `BatchRunner` exposé en service HTTP (`/health`, `/route`, `/batch`, `/metrics`).
