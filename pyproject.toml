@@ -57,6 +57,8 @@ dev = [
     "mypy>=1.10",
     "types-PyYAML",
     "types-requests",
+    "build>=1.2",
+    "twine>=5.1",
 ]
 
 [project.scripts]
