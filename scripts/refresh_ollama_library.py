@@ -12,6 +12,7 @@ Fallback sur l'API akazwz/ollama-models si le parsing échoue.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import pathlib
 import re
@@ -80,10 +81,8 @@ async def fetch_library_html() -> str:
         )
         page = await context.new_page()
         await page.goto(LIBRARY_URL, wait_until="domcontentloaded", timeout=30_000)
-        try:
+        with contextlib.suppress(Exception):
             await page.wait_for_selector('a[href^="/library/"]', timeout=15_000)
-        except Exception:
-            pass
         html = await page.content()
         await browser.close()
         return html
@@ -129,9 +128,11 @@ def parse_model_cards(html: str) -> list[dict]:
                     "cloud",
                 ):
                     capabilities.append(txt_lower)
-            elif "bg-[#ddf4ff]" in cls or "bg-blue-100" in cls:
-                if re.fullmatch(r"[\d.]+[bm]", txt_lower):
-                    base_sizes.append(txt_lower)
+            elif (
+                ("bg-[#ddf4ff]" in cls or "bg-blue-100" in cls)
+                and re.fullmatch(r"[\d.]+[bm]", txt_lower)
+            ):
+                base_sizes.append(txt_lower)
 
         models.append(
             {
@@ -153,10 +154,8 @@ async def scrape_model_tags(model_name: str) -> list[dict]:
             browser = await p.chromium.launch(headless=True)
             page = await browser.new_page()
             await page.goto(url, wait_until="domcontentloaded", timeout=20_000)
-            try:
+            with contextlib.suppress(Exception):
                 await page.wait_for_selector('a[href*=":"]', timeout=8_000)
-            except Exception:
-                pass
             html = await page.content()
             await browser.close()
     except Exception:
