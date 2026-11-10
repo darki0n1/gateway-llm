@@ -7,7 +7,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "gateway-llm"
-version = "0.1.0"
+version = "0.2.0"
 description = "Quality-Gated Batch Router : routage LLM par cascade, guardrails, budget et résidence des données."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -56,6 +56,7 @@ dev = [
     "pip-audit>=2.7",
     "mypy>=1.10",
     "types-PyYAML",
+    "types-requests",
 ]
 
 [project.scripts]

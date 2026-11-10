@@ -41,6 +41,8 @@ pip install gateway-llm
 
 Le package inclut toutes les dépendances : `nemoguardrails`, `psutil`, `playwright`, `tkinterdnd2`, `boto3`, `azure-identity`, `beautifulsoup4`. Aucun extra à installer.
 
+Le package est **typé** (`py.typed` inclus, PEP 561) : mypy et pyright fonctionnent out-of-the-box chez les consommateurs.
+
 **Chromium (une seule fois)** : le scraping du catalogue Ollama utilise Playwright. La GUI installe Chromium automatiquement au premier lancement. Pour un usage CLI-only, lancez une fois :
 
 ```bash
@@ -85,7 +87,6 @@ Le choix est persisté dans `~/.gateway-llm/secrets.yaml`. Ce fichier ne contien
 ### 3. Diagnostic
 
 ```bash
-# Vérifie deps Python, binaire Ollama, daemon, modèles locaux, stockage secrets
 gateway-llm doctor
 ```
 
@@ -94,16 +95,9 @@ La configuration par défaut est embarquée dans le code (`_DEFAULT_CONFIG` dans
 ### 4. Intake (conversion des données)
 
 ```bash
-# Dossier d'images (multimodal)
 gateway-llm intake from-folder --path ./screenshots --output tasks.jsonl
-
-# Dossier de textes
 gateway-llm intake from-text --path ./emails --output tasks.jsonl
-
-# Un ou plusieurs CSV (toutes les colonnes lues par le modèle)
 gateway-llm intake from-csv --path tickets.csv --output tasks.jsonl
-
-# Liste d'URLs (respecte robots.txt)
 gateway-llm intake from-urls --path urls.txt --output tasks.jsonl
 ```
 
@@ -235,44 +229,46 @@ Pour les gros CSV, les lignes sont traitées par lots de 500 (`max_rows`) avec t
 ```
 gateway-llm/
 ├── pyproject.toml
-├── README.md · LICENSE · CHANGELOG.md · CONTRIBUTING.md
+├── README.md · LICENSE.txt · CHANGELOG.md · CONTRIBUTING.md
 ├── benchmarks_cache/
-│   ├── f5_safety.json              # committé, maj CI bi-hebdomadaire
-│   ├── rws_translation.json        # committé, maj CI bi-hebdomadaire
-│   ├── ollama_library.json         # gitignored, généré par scripts/refresh_ollama_library.py
-│   └── benchlm_*.json / rankllms_*.json  # gitignored, TTL 24h
+│   ├── f5_safety.json
+│   ├── rws_translation.json
+│   ├── ollama_library.json
+│   └── benchlm_*.json / rankllms_*.json
 ├── scripts/
 │   ├── refresh_f5.py
 │   ├── refresh_rws.py
-│   └── refresh_ollama_library.py   # Playwright + BS4 + fallback API
+│   └── refresh_ollama_library.py
 ├── src/gateway_llm/
-│   ├── providers/                  # base, openai_compat, ollama, cloudflare
-│   ├── guardrails/                 # base, noop, nemo
-│   ├── benchmarks/                 # base, benchlm, rankllms, f5, rws, cache, aggregator, normalizer
-│   ├── router.py                   # cascade + guardrail + policy + hardware + budget + multimodal
-│   ├── quota.py                    # cooldown temporel (fix bug 429)
-│   ├── budget.py                   # plafond par lot
-│   ├── policy.py                   # résidence des données
-│   ├── classifier.py               # cascade 3 étages (regex → embeddings → LLM)
-│   ├── semantic_router.py          # embeddings Ollama
-│   ├── local_selector.py           # sélection benchmarks × hardware
-│   ├── checkpoint.py               # reprise après interruption
-│   ├── hardware.py                 # VRAM + RAM + disque + effective_capacity
-│   ├── secrets.py                  # 6 backends interchangeables
-│   ├── config.py                   # _DEFAULT_CONFIG + LocalMode + validation pydantic
-│   ├── doctor.py                   # diagnostic environnement
-│   ├── installer.py                # téléchargement Ollama + ensure_ollama_daemon
-│   ├── intake.py                   # convertisseur (folder/text/csv/urls/mixed)
-│   ├── gui.py                      # GUI unifiée (4 onglets + drag&drop + markdown)
-│   ├── batch.py                    # orchestrateur
-│   ├── cli.py                      # argparse
-│   └── logging.py                  # NullHandler + dictConfig
-├── tests/                          # tests unitaires (mocks, pas de réseau)
+│   ├── py.typed
+│   ├── providers/
+│   ├── guardrails/
+│   ├── benchmarks/
+│   ├── router.py
+│   ├── quota.py
+│   ├── budget.py
+│   ├── policy.py
+│   ├── classifier.py
+│   ├── semantic_router.py
+│   ├── local_selector.py
+│   ├── checkpoint.py
+│   ├── hardware.py
+│   ├── secrets.py
+│   ├── config.py
+│   ├── doctor.py
+│   ├── installer.py
+│   ├── intake.py
+│   ├── gui.py
+│   ├── batch.py
+│   ├── cli.py
+│   └── logging.py
+├── tests/
 ├── docs/
 │   ├── THREAT_MODEL.md
 │   ├── GUIDE_FR.md
-│   └── GUIDE_EN.md
-└── .github/workflows/              # CI + secret scan + update benchmarks
+│   ├── GUIDE_EN.md
+│   └── adr/
+└── .github/workflows/
 ```
 
 ## Programmation orientée objet
@@ -313,32 +309,54 @@ python -m gateway_llm.gui
 Quatre onglets :
 
 0. **Configuration** : choix du backend de secrets (obligatoire au premier lancement).
-1. **Préparer les données** : dossier d'images, fichiers texte, CSV (multi), URLs, ou mode **Mixte** (images + textes + CSV en une fois). Drag & drop accepté sur la liste. Boutons Ajouter / Retirer / Vider.
-2. **Lancer le traitement** : sélection input / output / config / budget, barre de progression, bouton **Annuler** (arrêt après la tâche en cours), logs en direct dans la fenêtre.
-3. **Voir les résultats** : chargement automatique après un batch (auto-refresh toutes les 2 secondes), rapport, liste des tâches à revoir avec rendu Markdown (titres, gras, italique, code, citations, listes), boutons Accepter / Rejeter.
+1. **Préparer les données** : dossier d'images, fichiers texte, CSV (multi), URLs, ou mode **Mixte**. Drag & drop accepté sur la liste.
+2. **Lancer le traitement** : input / output / config / budget, barre de progression, bouton **Annuler**, logs en direct.
+3. **Voir les résultats** : chargement automatique après un batch (auto-refresh 2s), rendu Markdown, boutons Accepter / Rejeter.
 
 ## Tests
 
 ```bash
 pytest
-pytest -v --cov=gateway_llm
+pytest -v --cov=gateway_llm --cov-fail-under=60
 ```
 
 La CI GitHub Actions exécute :
 
-- `pytest` sur Python 3.11, 3.12, 3.13
+- `pytest` sur Python 3.11, 3.12, 3.13 avec seuil de couverture (60%)
 - `ruff check` + `ruff format --check`
-- `mypy src/`
+- `mypy src/ scripts/`
 - `bandit -r src/` + `pip-audit --strict`
 - `gitleaks` (workflow séparé, hebdomadaire)
 
+Dependabot met à jour les dépendances pip et les actions GitHub chaque semaine.
+
 ## Documentation
 
-- [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) — modèle de menace complet (T1 à T15).
+- [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) — modèle de menace complet (T1 à T20).
 - [`docs/GUIDE_FR.md`](docs/GUIDE_FR.md) — guide utilisateur non technique (français).
 - [`docs/GUIDE_EN.md`](docs/GUIDE_EN.md) — guide utilisateur non technique (anglais).
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — comment contribuer.
 - [`CHANGELOG.md`](CHANGELOG.md) — historique des versions.
+- [`docs/adr/`](docs/adr/) — Architecture Decision Records.
+
+## Roadmap
+
+### 0.2.0 — base actuelle ✅
+Cascade router, guardrails, 6 backends de secrets, multimodal, CSV complet, GUI, CI complète, threat model T1–T20, `py.typed`.
+
+### 0.3.0 — service & observabilité 🔜
+- **FastAPI** : `BatchRunner` exposé en service HTTP (`/health`, `/route`, `/batch`, `/metrics`).
+- **vLLM & AWQ** : provider `vllm` (OpenAI-compatible), modèle 7B/8B AWQ, gain x5–x10 vs Ollama.
+- **Prometheus / Grafana** : métriques `gateway_llm_calls_total`, `gateway_llm_cost_eur`, `gateway_llm_latency_seconds`.
+- **Docker Compose** : API + vLLM + Prometheus + Grafana + Qdrant + Langfuse.
+- **Golden set & RAGAS CI** : régression qualité dans la CI.
+- **Observabilité Langfuse** : tracing de chaque `provider.complete()`.
+
+### 0.4.0 — production-grade 🔜
+- **Shadow mode / rollout** : comparaison A/B sans impact utilisateur, canary progressif.
+- **RAG end-to-end** : chunking, hybrid search (BM25 + dense), reranker.
+- **MCP server** : gateway exposée comme outil pour Claude Desktop / Cursor.
+- **OAuth 2.1 + webhooks signés** : auth utilisateur et notifications HMAC-SHA256.
 
 ## Contribuer
 
@@ -349,8 +367,8 @@ mypy src/
 pytest
 ```
 
-Inclure des tests pour toute nouvelle fonctionnalité. Ne jamais committer de secrets (voir `docs/THREAT_MODEL.md`).
+Inclure des tests pour toute nouvelle fonctionnalité. Ne jamais committer de secrets (voir `docs/THREAT_MODEL.md` et [`CONTRIBUTING.md`](CONTRIBUTING.md)).
 
 ## Licence
 
-Apache License 2.0 — voir [`LICENSE`](LICENSE).
+Apache License 2.0 — voir [`LICENSE.txt`](LICENSE.txt).

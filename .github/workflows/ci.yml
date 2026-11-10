@@ -30,8 +30,10 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
+      - name: Vérifier le marqueur py.typed
+        run: test -f src/gateway_llm/py.typed
       - name: Lancer pytest
-        run: pytest tests/ -v --cov=gateway_llm --cov-report=term-missing
+        run: pytest tests/ -v --cov=gateway_llm --cov-report=term-missing --cov-fail-under=60
 
   lint:
     name: Lint (ruff)
@@ -56,9 +58,8 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: pip install -e ".[dev]"
-      - run: pip install playwright  # pour les types dans scripts/
       - run: mypy src/ scripts/
-      
+
   security:
     name: Sécurité (bandit + pip-audit)
     runs-on: ubuntu-latest

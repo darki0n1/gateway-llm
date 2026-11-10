@@ -1,337 +1,200 @@
-# Contribuer à gateway-llm
+# Contributing to gateway-llm
 
-Merci de l'intérêt porté au projet. Ce document décrit comment installer
-l'environnement de développement, quel est le style de code attendu, comment
-tester, et comment proposer une contribution.
+Merci de l'intérêt porté au projet ! Ce document décrit comment contribuer efficacement, en respectant les conventions et la sécurité.
+
+## Table des matières
+
+- [Code de conduite](#code-de-conduite)
+- [Mise en place de l'environnement](#mise-en-place-de-lenvironnement)
+- [Workflow de contribution](#workflow-de-contribution)
+- [Style de code](#style-de-code)
+- [Tests](#tests)
+- [Ajouter un provider](#ajouter-un-provider)
+- [Ajouter un guardrail](#ajouter-un-guardrail)
+- [Ajouter une source de benchmarks](#ajouter-une-source-de-benchmarks)
+- [Ajouter un domaine](#ajouter-un-domaine)
+- [Sécurité — ne jamais committer de secrets](#sécurité--ne-jamais-committer-de-secrets)
+- [Architecture Decision Records (ADR)](#architecture-decision-records-adr)
+- [Signaler un bug / proposer une fonctionnalité](#signaler-un-bug--proposer-une-fonctionnalité)
 
 ## Code de conduite
 
-Ce projet suit une règle simple : **respect, patience, précision technique**.
-Les désaccords sont bienvenus, les attaques personnelles ne le sont pas. Si
-un désaccord technique persiste, il se tranche par un test, un benchmark, ou
-un consensus mainteneur — pas par la force de frappe argumentative.
+Ce projet suit le [Contributor Covenant v2.1](https://www.contributor-covenant.org/version/2/1/code_of_conduct/). En participant, vous vous engagez à respecter ce code. Les comportements inacceptables peuvent être signalés à `dennieau.amandine@proton.me`.
 
-## Mise en route
+## Mise en place de l'environnement
 
-### Prérequis
-
-- Python 3.11 ou supérieur (3.13 recommandé).
-- Git.
-- Optionnel : Ollama (pour les modèles locaux), PowerShell (pour
-  `PowerShellVaultBackend`), ou un binaire `op` (pour 1Password).
-
-### Installation
+Prérequis : Python ≥ 3.11, Git, Ollama (optionnel mais recommandé pour les tests locaux).
 
 ```bash
-git clone https://github.com/Darki0n1/gateway-llm.git
+git clone https://github.com/darki0n1/gateway-llm.git
 cd gateway-llm
-
 python -m venv .venv
-source .venv/bin/activate       # Linux / macOS
-# .venv\Scripts\activate        # Windows
-
+source .venv/bin/activate
 pip install -e ".[dev]"
-playwright install chromium     # une seule fois, pour le scraping du catalogue
+playwright install chromium
 ```
 
-L'installation en mode **editable** (`-e`) est obligatoire : elle permet à
-`pytest` et à Pylance de résoudre `import gateway_llm` directement depuis
-`src/`, sans `sys.path.insert`.
-
-### Vérifier que tout fonctionne
+Vérifier que tout est en place :
 
 ```bash
+gateway-llm doctor
 pytest
-ruff check src/ tests/
-mypy src/
+ruff check src/ tests/ scripts/
+mypy src/ scripts/
 ```
 
-Les trois doivent passer sans erreur avant de commencer à coder.
+## Workflow de contribution
 
-## Structure du projet
+1. **Ouvrir une issue** avant de coder (bug, feature, refactor). Décrire le contexte, le comportement attendu, et — si pertinent — une piste d'implémentation.
+2. **Forker** et créer une branche depuis `main` : `git checkout -b feat/mon-sujet` (ou `fix/…`, `docs/…`, `refactor/…`, `chore/…`).
+3. **Coder** en respectant le style et en ajoutant des tests.
+4. **Vérifier localement** :
 
+```bash
+ruff check src/ tests/ scripts/
+ruff format src/ tests/ scripts/
+mypy src/ scripts/
+pytest
 ```
-src/gateway_llm/        # code du package (layout src/)
-tests/                  # tests unitaires (mocks, pas de réseau)
-docs/                   # documentation utilisateur et technique
-benchmarks_cache/       # caches de benchmarks (f5/rws committés, ollama_library.json gitignored)
-scripts/                # scripts de scraping pour la CI
-.github/workflows/      # CI, scan de secrets, mise à jour benchmarks
-```
 
-Les règles de dépendance entre modules :
+5. **Commiter** en suivant [Conventional Commits](https://www.conventionalcommits.org/) :
+   - `feat: add vllm provider`
+   - `fix: quota cooldown not reset after 429`
+   - `docs: update threat model T16–T20`
+   - `test: add golden set for fact_checking`
+   - `refactor: extract router filters into functions`
+   - `chore: bump deps`
+6. **Pousser** et ouvrir une Pull Request vers `main`. Décrire le changement, cocher la checklist, lier l'issue (`Closes #42`).
+7. **Attendre la review**. La CI doit être verte (`test`, `lint`, `typecheck`, `security`, `gitleaks`).
 
-- `providers/` ne dépend de rien (sauf `base.py`).
-- `router.py` peut importer `providers/`, `guardrails/`, `benchmarks/`,
-  `quota.py`, `budget.py`, `policy.py`, `hardware.py`, `config.py`.
-- `batch.py` orchestre tout, mais ne doit pas être importé par les autres
-  modules.
-- `local_selector.py` peut importer `benchmarks/`, `hardware.py`.
-- `cli.py` et `gui.py` sont les seuls points d'entrée exécutables.
+### Checklist PR
 
-Aucun module ne doit avoir de **variable au niveau module** mutable. Si vous
-avez besoin d'un état partagé, faites une classe avec un `__init__` propre,
-injectable.
+- [ ] Tests ajoutés ou mis à jour
+- [ ] `ruff check` + `ruff format --check` passent
+- [ ] `mypy` passe
+- [ ] `pytest --cov-fail-under=60` passe
+- [ ] Aucun secret committé (`gitleaks detect` propre)
+- [ ] Documentation mise à jour si comportement public modifié
+- [ ] `CHANGELOG.md` mis à jour sous `[Unreleased]`
+- [ ] Si nouvelle décision architecturale : ADR ajouté (`docs/adr/`)
 
 ## Style de code
 
-### Outils
-
-- **ruff** pour le lint et le formatage (`line-length = 100`).
-- **mypy** en mode `strict` (voir `pyproject.toml`).
-- **type hints obligatoires** sur toutes les signatures publiques (fonctions,
-  méthodes, attributs de classe).
-
-### Règles générales
-
-- **Noms en français** pour les docstrings et commentaires de code métier,
-  **anglais** pour les identifiants (variables, fonctions, classes).
-- **Une classe = une responsabilité.** Si une classe a plus de 200 lignes,
-  c'est probablement deux classes.
-- **Une fonction = une action.** Si une fonction a plus de 40 lignes, c'est
-  probablement deux fonctions.
-- **Pas de `print`** dans le code de production. Utilisez
-  `logging.getLogger(__name__)`. Seuls `cli.py`, `gui.py` et `batch.py`
-  (rapport final) utilisent `print` pour la sortie utilisateur.
-- **Pas de `shell=True`.** Toujours `subprocess.run([...])` avec liste
-  d'arguments.
-- **Pas d'import cloud au niveau module.** `import boto3`, `import azure.*`
-  doivent être **dans la méthode** qui les utilise, avec
-  `# type: ignore[import-not-found]`.
-- **Paramètres inutilisés** : utiliser `*_args: object` (callbacks Tkinter)
-  ou préfixer par `_` pour Ruff. Pour Pylance, `*_args` est la seule forme
-  qui ne déclenche aucun warning.
-
-### Vérifications avant commit
-
-```bash
-ruff check src/ tests/
-ruff format src/ tests/
-mypy src/
-pytest
-```
-
-### Conventional Commits
-
-Format : `<type>(<scope>): <description>`.
-
-Types acceptés : `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`,
-`security`.
-
-Exemples :
-
-```
-feat(classifier): cascade 3 étages regex → embeddings → LLM
-fix(ollama): transmettre les images via le champ `message`
-docs(guide): section configuration des secrets
-```
+- **Ruff** (config dans `pyproject.toml`) : `E`, `F`, `I`, `B`, `UP`, `S`, `SIM`, `RUF`. Line length 100.
+- **Mypy strict-ish** : `check_untyped_defs = true`, `warn_return_any = true`. Pas de `# type: ignore` sans commentaire justificatif.
+- **Docstrings** : une ligne pour les fonctions publiques, plus si la logique est non triviale. En français ou en anglais, cohérent au sein d'un fichier.
+- **Nommage** : `snake_case` (fonctions, variables), `PascalCase` (classes), `SCREAMING_SNAKE_CASE` (constantes).
+- **Imports** : stdlib, puis third-party, puis `gateway_llm.*` (ruff `I` s'en occupe).
+- **Pas de dépendances nouvelles** sans discussion préalable dans une issue. Vérifier la licence (Apache 2.0 compatible) et l'activité du projet.
+- **Pas de `print()`** dans le code bibliothèque. Le CLI peut utiliser `print()` à la rigueur, jamais `logging` interdit.
+- **Pas de logique réseau dans les tests unitaires** : mocker via `unittest.mock` ou `responses`. Les tests de bout en bout (avec providers réels) sont dans `tests/e2e/` et skippés par défaut.
 
 ## Tests
 
-### Lancer les tests
+- **Structure** : `tests/` à la racine, miroir de `src/gateway_llm/`.
+- **Framework** : `pytest` + `pytest-cov`. Pas de `unittest.TestCase` (sauf besoin de mocker des méthodes spéciales).
+- **Nommage** : `test_<module>_<comportement>` (ex. `test_router_policy_blocks_cloud_for_confidential`).
+- **Fixtures** : préférer les fixtures `pytest` aux `setUp`/`tearDown`. Les fixtures partagées dans `conftest.py`.
+- **Mocks** : `Mock()` d'`unittest.mock` pour les providers et `requests` (`responses` ou `monkeypatch`).
+- **Couverture** : seuil CI 60%. Toute nouvelle branche logique (if/else significatif) doit être testée.
 
-```bash
-pytest                          # tout
-pytest tests/test_router.py     # un fichier
-pytest -v --cov=gateway_llm     # avec couverture
-pytest -k "quota"               # filtrer par nom
+Exemple minimal :
+
+```python
+def test_policy_blocks_cloud_for_confidential():
+    policy = PolicyConfig(residency={
+        "confidential": {"allowed_providers": ["ollama"]},
+    })
+    assert policy.is_allowed("ollama", "confidential") is True
+    assert policy.is_allowed("groq", "confidential") is False
 ```
 
-### Règles
+## Ajouter un provider
 
-- **Aucun réseau dans les tests.** Mockez systématiquement `requests.get`,
-  `requests.post`, `subprocess.run`, `subprocess.Popen`,
-  `ensure_ollama_daemon`, etc.
-- **Un test = une assertion significative.**
-- **Les tests de régression sont critiques.** Si vous corrigez un bug, ajoutez
-  un test qui échoue **avant** votre correction et passe **après**.
-- **Nommage** : `test_<action>_<condition>_<expected_result>`.
+1. Créer `src/gateway_llm/providers/mon_provider.py` qui hérite de `Provider` (dans `providers/base.py`).
+2. Implémenter `complete(model, prompt, max_tokens, temperature, image_b64)`.
+3. Lever les bonnes exceptions : `RateLimitError` (429), `ProviderUnavailableError` (5xx, timeout, réponse malformée), `ProviderError` (autres).
+4. Ajouter le `type` dans `ProviderConfig` (`config.py`).
+5. Ajouter la factory dans `BatchRunner._build_providers()`.
+6. Ajouter un test `tests/test_providers_mon.py` (mock `requests`).
+7. Documenter dans `README.md` (section « Backends ») et `CHANGELOG.md`.
 
-### Tests de sécurité
+## Ajouter un guardrail
 
-`test_security.py` couvre :
+1. Créer `src/gateway_llm/guardrails/mon_guardrail.py` qui hérite de `Guardrail` (`guardrails/base.py`).
+2. Implémenter `check(task_text, response) -> GuardrailResult`. **Ne jamais lever d'exception** : fail-open (`is_valid=True`) en cas d'erreur, logger un `warning`.
+3. Documenter la dépendance optionnelle dans `pyproject.toml` `[optional-dependencies]` si besoin.
+4. Ajouter un test avec et sans la dépendance (mock `ImportError`).
+5. Documenter dans `README.md` (section « Guardrails ») et `CHANGELOG.md`.
 
-- Absence de `shell=True` dans les backends de secrets.
-- Échappement des apostrophes (PowerShell).
-- Absence d'import cloud au niveau module.
-- Comportement de `get_backend()` sans configuration.
-- Comportement `PowerShellVaultBackend` quand PowerShell est absent (retourne
-  `False`, ne lève pas).
+## Ajouter une source de benchmarks
 
-**Ne modifiez jamais un test de sécurité pour le faire passer sans corriger le
-code sous-jacent.**
+1. Créer `src/gateway_llm/benchmarks/mon_benchmark.py` qui hérite de `BenchmarkSource` (`benchmarks/base.py`).
+2. Implémenter `fetch(category) -> list[BenchmarkResult]` et `supports(category) -> bool`.
+3. Normaliser les noms via `normalize_model_name()` (`benchmarks/normalizer.py`).
+4. Si la source n'a pas d'API JSON : fournir un script de scraping dans `scripts/refresh_mon_benchmark.py` + cache JSON dans `benchmarks_cache/mon_benchmark.json`.
+5. Si scraping : **jamais en runtime**, toujours via GitHub Actions planifié ou script manuel. Documenter dans `docs/THREAT_MODEL.md` (menace T11/T12 par analogie).
+6. Ajouter l'adaptateur dans `BatchRunner._build_default_benchmarks()`.
+7. Ajouter un test avec un cache JSON factice.
+8. Documenter dans `README.md` (section « Benchmarks ») et `CHANGELOG.md`.
 
-## Ajouter une fonctionnalité
+## Ajouter un domaine
 
-### Ajouter un provider LLM
+1. Ajouter la valeur dans `TaskCategory` (`benchmarks/base.py`) et `DOMAINS` (`classifier.py`).
+2. Ajouter le domaine dans `_DEFAULT_CONFIG` (`config.py`) avec sa chaîne de modèles.
+3. Ajouter les utterances dans `SemanticRouter.DOMAIN_UTTERANCES` (`semantic_router.py`).
+4. Ajouter les règles regex dans `TaskClassifier._fallback` (`classifier.py`) si pertinent.
+5. Ajouter le mapping dans l'adaptateur benchmark qui supporte la catégorie.
+6. **Mettre à jour `docs/THREAT_MODEL.md`** : la revue de sécurité est obligatoire à chaque ajout de domaine (ex. `multimodal_extraction` a introduit T15).
+7. Ajouter des tests de classification sur des phrases représentatives.
+8. Documenter dans `README.md` et `CHANGELOG.md`.
 
-1. Créez `src/gateway_llm/providers/<nom>.py` héritant de `Provider`.
-2. Implémentez `complete(model, prompt, max_tokens, temperature, image_b64)`.
-3. Levez `RateLimitError` sur 429, `ProviderUnavailableError` sur les autres
-   erreurs non récupérables.
-4. Ajoutez la classe dans `BatchRunner._build_providers()`.
-5. Ajoutez le type au `Literal` dans `ProviderConfig.type` (dans `config.py`).
-6. Ajoutez la config par défaut dans `_DEFAULT_CONFIG` (dans `config.py`,
-   section `providers` et `models`).
-7. Testez dans `tests/test_providers.py` avec `@patch` sur l'appel HTTP.
+## Sécurité — ne jamais committer de secrets
 
-### Ajouter un backend de secrets
+- **Jamais** de clé API dans le code, les tests, les configs, les logs.
+- Utiliser `gateway-llm setup-secrets` pour choisir un backend (PowerShell Vault, 1Password, HashiCorp, AWS, Azure). Jamais `.env` en usage quotidien.
+- Le fichier `~/.gateway-llm/secrets.yaml` ne contient **jamais** de secret final — seulement le nom du backend et ses options de connexion.
+- Avant chaque push : `gitleaks detect --source .` (ou installer le pre-commit hook).
+- Si un secret est commité par erreur : **révoquer immédiatement** la clé chez le provider, puis réécrire l'historique (`git filter-repo`). Ne pas se contenter d'un nouveau commit.
+- Lire `docs/THREAT_MODEL.md` avant toute modification touchant `secrets.py`, `router.py`, `intake.py`, `batch.py`, `gui.py`.
 
-1. Créez une classe héritant de `SecretBackend`.
-2. Implémentez `get()`, `is_available()`, et `set()` si le backend supporte
-   l'écriture.
-3. Importez les dépendances SDK **à l'intérieur** des méthodes, avec
-   `# type: ignore[import-not-found]`.
-4. Ajoutez la factory dans `_BACKEND_FACTORIES`.
-5. Documentez dans `docs/THREAT_MODEL.md` (menace T2 et T14 au minimum).
-6. Testez dans `tests/test_security.py`.
+## Architecture Decision Records (ADR)
 
-### Ajouter une source de benchmarks
+Toute décision architecturale non triviale doit être documentée dans `docs/adr/`, au format [MADR](https://adr.github.io/madr/) :
 
-1. Créez une classe héritant de `BenchmarkSource`.
-2. Implémentez `fetch(category)` et `supports(category)`.
-3. Utilisez `normalize_model_name()` pour normaliser les noms.
-4. Renseignez `BenchmarkResult.size_gb` et `BenchmarkResult.param_count_b` si
-   la source les expose (indispensable pour `local_selector`).
-5. Ajoutez l'instance dans `_build_default_benchmarks()` (dans `batch.py`) et
-   dans `_build_aggregator()` (dans `cli.py`).
-6. Si la source n'a pas d'API et nécessite un scraping, ajoutez un script
-   `scripts/refresh_<nom>.py` et intégrez-le au workflow
-   `.github/workflows/update-benchmarks.yml`.
-
-### Ajouter un domaine de tâche
-
-1. Ajoutez la catégorie dans `TaskCategory` (dans `benchmarks/base.py`).
-2. Ajoutez l'entrée dans `DOMAINS` (dans `classifier.py`), dans le prompt de
-   classification LLM (`_classify_llm`) et dans les règles regex
-   (`_fallback`).
-3. Ajoutez la chaîne dans `_DEFAULT_CONFIG["domains"]` (dans `config.py`).
-4. Ajoutez des utterances d'exemple dans `DOMAIN_UTTERANCES`
-   (`semantic_router.py`) pour que les embeddings puissent reconnaître le
-   domaine.
-5. Si nécessaire, ajoutez le mapping dans `_BENCHLM_CATEGORY` ou
-   `_RANKLLMS_CATEGORY`.
-6. Testez la détection dans `tests/test_classifier.py`.
-
-### Ajouter une étape à la cascade de classification
-
-La cascade actuelle est : regex → embeddings → LLM. Si vous ajoutez une étape :
-
-1. Respectez les seuils (`HIGH_CONFIDENCE`, `LOW_CONFIDENCE`, `AMBIGUITY_GAP`).
-2. Renseignez `ClassificationResult.decision_layer` pour tracer la décision.
-3. Renseignez `ClassificationResult.confidence` quand applicable.
-4. Testez chaque zone (haute confiance, zone grise, bas score).
-
-## Documentation
-
-- Toute nouvelle fonctionnalité publique doit être documentée dans
-  `README.md`.
-- Toute nouvelle menace ou surface d'attaque doit être ajoutée à
-  `docs/THREAT_MODEL.md` avec un numéro T<n> séquentiel.
-- Les changements notables doivent être ajoutés à `CHANGELOG.md` sous
-  `[Unreleased]`.
-- Les guides utilisateur (`docs/GUIDE_FR.md`, `docs/GUIDE_EN.md`) doivent
-  rester **non techniques**.
-
-## Sécurité
-
-### Ne jamais committer de secret
-
-- Pas de `.env`, pas de `models.yaml` avec des clés, pas de
-  `~/.gateway-llm/secrets.yaml`.
-- Si vous voyez un secret dans une PR, signalez-le immédiatement en commentaire
-  et n'approuvez pas la PR.
-
-### Avant chaque push
-
-```bash
-gitleaks detect --source . --no-git --verbose
+```
+docs/adr/
+├── 0001-cascade-router.md
+├── 0002-guardrail-filtre-final.md
+├── 0003-secrets-explicites.md
+└── ...
 ```
 
-Si vous voulez scanner tout l'historique :
-
-```bash
-gitleaks detect --source . --verbose --redact
-```
-
-La CI exécute gitleaks automatiquement chaque lundi et sur chaque PR.
-
-### Signaler une vulnérabilité
-
-Pour les vulnérabilités de sécurité, **n'ouvrez pas d'issue publique**.
-Contactez le mainteneur par email privé (voir `pyproject.toml`, champ
-`authors[].email`). Vous recevrez une réponse sous 72h.
-
-## Pull requests
-
-### Avant d'ouvrir
-
-1. Votre branche part de `main` à jour.
-2. `pytest`, `ruff check`, `mypy` passent localement.
-3. Vous avez ajouté des tests pour votre changement (ou justifié pourquoi ce
-   n'est pas nécessaire).
-4. Vous avez mis à jour `CHANGELOG.md`.
-5. Vous avez mis à jour la documentation si pertinent.
-
-### Description de PR
-
-Utilisez ce template :
+Structure minimale :
 
 ```markdown
-## Résumé
+# ADR-0001 : Cascade router avec guardrail en filtre final
 
-Description en 2-3 phrases de ce que fait la PR.
+## Statut
+Accepté (2026-06-01)
 
-## Type de changement
+## Contexte
+...
 
-- [ ] Bug fix (non-breaking)
-- [ ] Nouvelle fonctionnalité (non-breaking)
-- [ ] Breaking change (impact utilisateurs)
-- [ ] Documentation
-- [ ] Refactorisation
-- [ ] Sécurité
+## Décision
+...
 
-## Motivation
-
-Pourquoi ce changement est nécessaire. Lien vers une issue si applicable.
-
-## Tests
-
-Comment vous avez testé (tests unitaires ajoutés, tests manuels, etc.).
-
-## Checklist
-
-- [ ] `pytest` passe
-- [ ] `ruff check` passe
-- [ ] `mypy` passe
-- [ ] `CHANGELOG.md` mis à jour
-- [ ] Documentation mise à jour si pertinent
+## Conséquences
+- Positives : ...
+- Négatives : ...
 ```
 
-### Revue
+## Signaler un bug / proposer une fonctionnalité
 
-Une PR est fusionnable quand :
-
-- La CI est verte (tests + lint + type + sécurité).
-- Au moins un mainteneur a approuvé.
-- Les commentaires de revue ont été adressés (ou explicitement ignorés avec
-  justification).
-
-Les débats techniques se règlent par des arguments ou des benchmarks, pas par
-l'insistance.
+- **Bug** : ouvrir une issue avec le template `bug_report`. Inclure version (`gateway-llm --version`), OS, Python, sortie de `gateway-llm doctor`, extrait de log (`INFO`), et étapes de reproduction.
+- **Feature** : ouvrir une issue avec le template `feature_request`. Décrire le cas d'usage, la valeur ajoutée, et — si possible — une piste d'implémentation.
+- **Question** : utiliser les Discussions GitHub.
 
 ## Licence
 
-En contribuant, vous acceptez que votre code soit distribué sous
-[Apache License 2.0](LICENSE). Vous conservez votre copyright sur les
-contributions que vous produisez, mais vous accordez une licence perpétuelle,
-mondiale, non exclusive et gratuite au projet et à ses utilisateurs.
-
-## Questions
-
-- Pour les questions d'utilisation : ouvrez une **issue** avec le label
-  `question`.
-- Pour les bugs : ouvrez une **issue** avec le label `bug` et un exemple
-  reproductible.
-- Pour les fonctionnalités : ouvrez une **issue** avec le label `enhancement`
-  avant de coder, pour valider la direction.
+En contribuant, vous acceptez que vos contributions soient placées sous licence Apache 2.0 (voir `LICENSE.txt`). Le projet n'a pas de CLA : l'acceptation de la PR vaut acceptation de la licence.
